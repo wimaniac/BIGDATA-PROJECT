@@ -26,8 +26,12 @@ router.get("/:id", async (req, res) => {
 });
 
 // Create a new category
+// API Tạo danh mục mới (Sửa lỗi parentCategory -> parent)
 router.post("/", async (req, res) => {
-  const category = new Category(req.body);
+  const category = new Category({
+    name: req.body.name,
+    parent: req.body.parent, // Đúng với schema
+  });
   try {
     const newCategory = await category.save();
     res.status(201).json(newCategory);
@@ -35,6 +39,7 @@ router.post("/", async (req, res) => {
     res.status(400).json({ message: err.message });
   }
 });
+
 
 // Update category
 router.put("/:id", async (req, res) => {

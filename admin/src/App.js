@@ -3,9 +3,9 @@ import { useState } from "react";
 import { IconButton } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import Sidebar from "./components/Sidebar";
-import Products from "./pages/Product/Products";
-import Categories from "./pages/Category/Categories";
-import Suppliers from "./pages/Supplier/Suppliers";
+import Products from "./pages/Product/ManageProducts";
+import Categories from "./pages/Category/ManageCategory";
+import Suppliers from "./pages/Supplier/ManageSuppliers";
 
 function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
