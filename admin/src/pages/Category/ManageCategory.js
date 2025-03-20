@@ -15,6 +15,7 @@ import {
   DialogActions,
   Snackbar,
   Alert,
+  DialogContentText,
 } from "@mui/material";
 import { Add, Edit, Delete, ExpandLess, ExpandMore } from "@mui/icons-material";
 import axios from "axios";
@@ -28,6 +29,8 @@ const ManageCategory = () => {
   const [error, setError] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
   const [openCategories, setOpenCategories] = useState({});
+  const [editCategory, setEditCategory] = useState(null);
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, categoryId: null });
 
   useEffect(() => {
     fetchCategories();
@@ -49,9 +52,16 @@ const ManageCategory = () => {
     setOpen(true);
   };
 
+  const handleOpenEditDialog = (category) => {
+    setEditCategory(category);
+    setNewCategory(category.name);
+    setOpen(true);
+  };
+
   const handleCloseDialog = () => {
     setOpen(false);
     setNewCategory("");
+    setEditCategory(null);
   };
 
   const handleAddCategory = async () => {
@@ -59,7 +69,7 @@ const ManageCategory = () => {
     try {
       await axios.post("http://localhost:5000/api/categories", {
         name: newCategory,
-        parent: parentCategory ? parentCategory._id : null, // Đổi từ parentCategory -> parent
+        parent: parentCategory ? parentCategory._id : null, // Ensure correct parent assignment
       });
       fetchCategories();
       handleCloseDialog();
@@ -69,18 +79,40 @@ const ManageCategory = () => {
       setSnackbar({ open: true, message: "Lỗi thêm danh mục!", severity: "error" });
     }
   };
-  
 
-  const handleDeleteCategory = async (id) => {
-    if (window.confirm("Bạn có chắc muốn xóa danh mục này?")) {
-      try {
-        await axios.delete(`http://localhost:5000/api/categories/${id}`);
-        fetchCategories();
-        setSnackbar({ open: true, message: "Xóa danh mục thành công!", severity: "success" });
-      } catch (error) {
-        console.error("Lỗi xóa danh mục:", error);
-        setSnackbar({ open: true, message: "Lỗi xóa danh mục!", severity: "error" });
-      }
+  const handleUpdateCategory = async () => {
+    if (!newCategory.trim()) return;
+    try {
+      await axios.put(`http://localhost:5000/api/categories/${editCategory._id}`, {
+        name: newCategory,
+      });
+      fetchCategories();
+      handleCloseDialog();
+      setSnackbar({ open: true, message: "Cập nhật danh mục thành công!", severity: "success" });
+    } catch (error) {
+      console.error("Lỗi cập nhật danh mục:", error);
+      setSnackbar({ open: true, message: "Lỗi cập nhật danh mục!", severity: "error" });
+    }
+  };
+
+  const handleOpenDeleteDialog = (id) => {
+    setDeleteDialog({ open: true, categoryId: id });
+  };
+
+  const handleCloseDeleteDialog = () => {
+    setDeleteDialog({ open: false, categoryId: null });
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      await axios.delete(`http://localhost:5000/api/categories/${deleteDialog.categoryId}`);
+      fetchCategories();
+      setSnackbar({ open: true, message: "Xóa danh mục thành công!", severity: "success" });
+    } catch (error) {
+      console.error("Lỗi xóa danh mục:", error);
+      setSnackbar({ open: true, message: "Lỗi xóa danh mục!", severity: "error" });
+    } finally {
+      handleCloseDeleteDialog();
     }
   };
 
@@ -95,6 +127,9 @@ const ManageCategory = () => {
   const filteredCategories = categories.filter((category) =>
     category.name.toLowerCase().includes(search.toLowerCase())
   );
+
+  const parentCategories = filteredCategories.filter((category) => !category.parent);
+  const childCategories = filteredCategories.filter((category) => category.parent);
 
   return (
     <Container>
@@ -131,49 +166,46 @@ const ManageCategory = () => {
 
       {/* Danh sách danh mục */}
       <List>
-        {filteredCategories
-          .filter((category) => !category.parentCategory)
-          .map((parent) => (
-            <div key={parent._id}>
-              <ListItem button onClick={() => handleToggleCategory(parent._id)}>
-                {openCategories[parent._id] ? <ExpandLess /> : <ExpandMore />}
-                <ListItemText primary={parent.name} />
-                <ListItemSecondaryAction>
-                  <IconButton color="primary" onClick={() => handleOpenDialog(parent)}>
-                    <Add />
-                  </IconButton>
-                  <IconButton color="secondary" onClick={() => alert("Sửa chưa triển khai!")}>
-                    <Edit />
-                  </IconButton>
-                  <IconButton color="error" onClick={() => handleDeleteCategory(parent._id)}>
-                    <Delete />
-                  </IconButton>
-                </ListItemSecondaryAction>
-              </ListItem>
-              {/* Danh mục con */}
-              {openCategories[parent._id] &&
-                filteredCategories
-                  .filter((sub) => sub.parentCategory === parent._id)
-                  .map((child) => (
-                    <ListItem key={child._id} sx={{ pl: 4 }}>
-                      <ListItemText primary={`- ${child.name}`} />
-                      <ListItemSecondaryAction>
-                        <IconButton color="secondary" onClick={() => alert("Sửa chưa triển khai!")}>
-                          <Edit />
-                        </IconButton>
-                        <IconButton color="error" onClick={() => handleDeleteCategory(child._id)}>
-                          <Delete />
-                        </IconButton>
-                      </ListItemSecondaryAction>
-                    </ListItem>
-                  ))}
-            </div>
-          ))}
+        {parentCategories.map((parent) => (
+          <div key={parent._id}>
+            <ListItem button onClick={() => handleToggleCategory(parent._id)}>
+              {openCategories[parent._id] ? <ExpandLess /> : <ExpandMore />}
+              <ListItemText primary={parent.name} />
+              <ListItemSecondaryAction>
+                <IconButton color="primary" onClick={() => handleOpenDialog(parent)}>
+                  <Add />
+                </IconButton>
+                <IconButton color="secondary" onClick={() => handleOpenEditDialog(parent)}>
+                  <Edit />
+                </IconButton>
+                <IconButton color="error" onClick={() => handleOpenDeleteDialog(parent._id)}>
+                  <Delete />
+                </IconButton>
+              </ListItemSecondaryAction>
+            </ListItem>
+            {openCategories[parent._id] &&
+              childCategories
+                .filter((sub) => sub.parent === parent._id)
+                .map((child) => (
+                  <ListItem key={child._id} sx={{ pl: 4 }}>
+                    <ListItemText primary={`- ${child.name}`} />
+                    <ListItemSecondaryAction>
+                      <IconButton color="secondary" onClick={() => handleOpenEditDialog(child)}>
+                        <Edit />
+                      </IconButton>
+                      <IconButton color="error" onClick={() => handleOpenDeleteDialog(child._id)}>
+                        <Delete />
+                      </IconButton>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                ))}
+          </div>
+        ))}
       </List>
 
       {/* Dialog thêm danh mục */}
       <Dialog open={open} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>{parentCategory ? `Thêm danh mục con cho ${parentCategory.name}` : "Thêm danh mục mới"}</DialogTitle>
+        <DialogTitle>{editCategory ? `Chỉnh sửa danh mục ${editCategory.name}` : parentCategory ? `Thêm danh mục con cho ${parentCategory.name}` : "Thêm danh mục mới"}</DialogTitle>
         <DialogContent>
           <TextField
             label="Tên danh mục"
@@ -187,8 +219,26 @@ const ManageCategory = () => {
           <Button onClick={handleCloseDialog} color="secondary">
             Hủy
           </Button>
-          <Button onClick={handleAddCategory} color="primary" variant="contained">
-            Thêm
+          <Button onClick={editCategory ? handleUpdateCategory : handleAddCategory} color="primary" variant="contained">
+            {editCategory ? "Cập nhật" : "Thêm"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog xác nhận xóa danh mục */}
+      <Dialog open={deleteDialog.open} onClose={handleCloseDeleteDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Xác nhận xóa danh mục</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Bạn có chắc chắn muốn xóa danh mục này?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDeleteDialog} color="secondary">
+            Hủy
+          </Button>
+          <Button onClick={handleConfirmDelete} color="primary" variant="contained">
+            Xóa
           </Button>
         </DialogActions>
       </Dialog>

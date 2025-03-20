@@ -4,7 +4,7 @@ import Home from "./Home";
 import Login from "./pages/Login/Login";
 import Register from "./pages/Login/Register";
 
-const App = () => {
+function App() {
   return (
     <Router>
       <Routes>
@@ -14,6 +14,6 @@ const App = () => {
       </Routes>
     </Router>
   );
-};
+}
 
 export default App;

@@ -6,6 +6,8 @@ import Sidebar from "./components/Sidebar";
 import Products from "./pages/Product/ManageProducts";
 import Categories from "./pages/Category/ManageCategory";
 import Suppliers from "./pages/Supplier/ManageSuppliers";
+import AddProduct from "./pages/Product/AddProduct";
+import EditProduct from "./pages/Product/EditProduct"; // ✅ Đổi tên import từ UpdateProduct thành EditProduct
 
 function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -24,6 +26,8 @@ function App() {
         <Route path="/products" element={<Products />} />
         <Route path="/categories" element={<Categories />} />
         <Route path="/suppliers" element={<Suppliers />} />
+        <Route path="/add-product" element={<AddProduct />} />
+        <Route path="/edit-product/:id" element={<EditProduct />} /> 
       </Routes>
     </Router>
   );

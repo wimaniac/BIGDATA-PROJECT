@@ -27,12 +27,17 @@ router.get("/:id", async (req, res) => {
 
 // Create a new supplier
 router.post("/", async (req, res) => {
-  const supplier = new Supplier(req.body);
+  const { name, email, phone } = req.body;
+  if (!name || !email || !phone) {
+    return res.status(400).json({ message: "Vui lòng nhập đầy đủ thông tin!" });
+  }
+
   try {
-    const newSupplier = await supplier.save();
+    const newSupplier = new Supplier({ name, email, phone });
+    await newSupplier.save();
     res.status(201).json(newSupplier);
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(500).json({ message: err.message });
   }
 });
 

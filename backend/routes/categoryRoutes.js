@@ -13,6 +13,20 @@ router.get("/", async (req, res) => {
   }
 });
 
+// API lấy danh mục cha (parent = null)
+router.get("/parents", async (req, res) => {
+  try {
+    const parentCategories = await Category.find({ parent: null });
+    if (!parentCategories) {
+      return res.status(404).json({ message: "Không có danh mục cha nào!" });
+    }
+    res.json(parentCategories);
+  } catch (err) {
+    console.error("🔥 Lỗi lấy danh mục cha:", err);
+    res.status(500).json({ message: "Lỗi server!", error: err.message });
+  }
+});
+
 // Get category by ID
 router.get("/:id", async (req, res) => {
   try {
@@ -25,12 +39,21 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+// API lấy danh mục con theo danh mục cha
+router.get("/subcategories/:parentId", async (req, res) => {
+  try {
+    const subcategories = await Category.find({ parent: req.params.parentId });
+    res.json(subcategories);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Create a new category
-// API Tạo danh mục mới (Sửa lỗi parentCategory -> parent)
 router.post("/", async (req, res) => {
   const category = new Category({
     name: req.body.name,
-    parent: req.body.parent, // Đúng với schema
+    parent: req.body.parent, // Ensure correct parent assignment
   });
   try {
     const newCategory = await category.save();
@@ -39,7 +62,6 @@ router.post("/", async (req, res) => {
     res.status(400).json({ message: err.message });
   }
 });
-
 
 // Update category
 router.put("/:id", async (req, res) => {

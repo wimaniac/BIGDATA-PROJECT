@@ -1,17 +1,9 @@
 import mongoose from "mongoose";
-import cloudinary from "cloudinary";
-
-// Cấu hình Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
 
 const productSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, index: true },
-    description: String,
+    description: { type: String, default: "" }, // Ensure description is included
     price: { type: Number, required: true },
     parentCategory: {
       type: mongoose.Schema.Types.ObjectId,
@@ -33,21 +25,14 @@ const productSchema = new mongoose.Schema(
       index: true,
     },
     mainImage: { type: String, required: true },
-    additionalImages: [String],
+    additionalImages: { type: [String], default: [] }, 
     ratings: { type: Number, default: 0 },
-    details: { type: String, default: "" }, // Thông tin chi tiết
+    details: { type: String, default: "" },
+    unit: { type: String, required: true }, 
+    totalSold: { type: Number, default: 0 },
+
   },
   { timestamps: true }
 );
-
-// Phương thức để tải lên hình ảnh lên Cloudinary
-productSchema.methods.uploadImage = async function (imagePath) {
-  try {
-    const result = await cloudinary.v2.uploader.upload(imagePath);
-    return result.secure_url;
-  } catch (error) {
-    throw new Error("Failed to upload image to Cloudinary");
-  }
-};
 
 export default mongoose.model("Product", productSchema);

@@ -14,22 +14,32 @@ import {
   MenuItem,
   InputLabel,
   FormControl,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Rating,
 } from "@mui/material";
-import { Edit, Delete, Add } from "@mui/icons-material";
+import { Edit, Delete, Add, Visibility } from "@mui/icons-material";
 import axios from "axios";
+import { useNavigate } from "react-router-dom"; // Import useNavigate
 
 const ManageProducts = () => {
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [subcategoryFilter, setSubcategoryFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState([]);
+  const [subcategoryFilter, setSubcategoryFilter] = useState([]);
   const [sortFilter, setSortFilter] = useState("");
   const [categories, setCategories] = useState([]);
   const [subcategories, setSubcategories] = useState([]);
+  const [selectedProduct, setSelectedProduct] = useState(null); // State for selected product
+  const [suppliers, setSuppliers] = useState([]); // State for suppliers
+  const navigate = useNavigate(); // Initialize useNavigate
 
   useEffect(() => {
     fetchProducts();
     fetchCategories();
+    fetchSuppliers(); // Fetch suppliers
   }, []);
 
   const fetchProducts = async () => {
@@ -43,10 +53,36 @@ const ManageProducts = () => {
 
   const fetchCategories = async () => {
     try {
-      const response = await axios.get("http://localhost:5000/api/categories");
-      setCategories(response.data);
+      const parentRes = await axios.get(
+        "http://localhost:5000/api/categories/parents"
+      );
+      setCategories(parentRes.data);
     } catch (error) {
-      console.error("Lỗi lấy danh mục sản phẩm:", error);
+      console.error("Lỗi lấy danh mục cha:", error);
+    }
+  };
+
+  const fetchSubcategories = async (parentIds) => {
+    try {
+      const allSubcategories = [];
+      for (const parentId of parentIds) {
+        const response = await axios.get(
+          `http://localhost:5000/api/categories/subcategories/${parentId}`
+        );
+        allSubcategories.push(...response.data);
+      }
+      setSubcategories(allSubcategories); // Lưu tất cả danh mục con vào state
+    } catch (error) {
+      console.error("Lỗi lấy danh mục con:", error);
+    }
+  };
+
+  const fetchSuppliers = async () => {
+    try {
+      const response = await axios.get("http://localhost:5000/api/suppliers");
+      setSuppliers(response.data);
+    } catch (error) {
+      console.error("Lỗi lấy danh sách nhà cung cấp:", error);
     }
   };
 
@@ -61,15 +97,27 @@ const ManageProducts = () => {
     }
   };
 
+  const handleViewDetails = (product) => {
+    setSelectedProduct(product);
+  };
+
+  const handleCloseDialog = () => {
+    setSelectedProduct(null);
+  };
+
   const filteredProducts = products
     .filter((product) =>
       product.name.toLowerCase().includes(search.toLowerCase())
     )
     .filter((product) =>
-      categoryFilter ? product.category === categoryFilter : true
+      categoryFilter.length > 0
+        ? categoryFilter.includes(product.parentCategory?._id?.toString())
+        : true
     )
     .filter((product) =>
-      subcategoryFilter ? product.subcategory === subcategoryFilter : true
+      subcategoryFilter.length > 0
+        ? subcategoryFilter.includes(product.subCategory?._id?.toString())
+        : true
     )
     .sort((a, b) => {
       if (sortFilter === "Mới nhất") {
@@ -97,12 +145,27 @@ const ManageProducts = () => {
       />
 
       {/* Bộ lọc danh mục */}
+      {/* Bộ lọc danh mục chính */}
       <FormControl fullWidth sx={{ mb: 2 }}>
         <InputLabel>Chọn danh mục chính</InputLabel>
-        <Select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-          <MenuItem value="">Tất cả</MenuItem>
+        <Select
+          multiple
+          value={categoryFilter}
+          onChange={(e) => {
+            const selectedIds = e.target.value.map((id) => id.toString()); // Đảm bảo ID là String
+            setCategoryFilter(selectedIds);
+            setSubcategoryFilter([]);
+            fetchSubcategories(selectedIds);
+          }}
+          renderValue={(selected) =>
+            categories
+              .filter((cat) => selected.includes(cat._id.toString()))
+              .map((cat) => cat.name)
+              .join(", ")
+          }
+        >
           {categories.map((category) => (
-            <MenuItem key={category._id} value={category._id}>
+            <MenuItem key={category._id} value={category._id.toString()}>
               {category.name}
             </MenuItem>
           ))}
@@ -110,10 +173,23 @@ const ManageProducts = () => {
       </FormControl>
 
       {/* Bộ lọc danh mục con */}
-      <FormControl fullWidth sx={{ mb: 2 }}>
+      <FormControl
+        fullWidth
+        sx={{ mb: 2 }}
+        disabled={categoryFilter.length === 0}
+      >
         <InputLabel>Chọn danh mục phụ</InputLabel>
-        <Select value={subcategoryFilter} onChange={(e) => setSubcategoryFilter(e.target.value)}>
-          <MenuItem value="">Tất cả</MenuItem>
+        <Select
+          multiple // Cho phép chọn nhiều danh mục con
+          value={subcategoryFilter}
+          onChange={(e) => setSubcategoryFilter(e.target.value)}
+          renderValue={(selected) =>
+            subcategories
+              .filter((sub) => selected.includes(sub._id))
+              .map((sub) => sub.name)
+              .join(", ")
+          }
+        >
           {subcategories.map((subcategory) => (
             <MenuItem key={subcategory._id} value={subcategory._id}>
               {subcategory.name}
@@ -125,7 +201,10 @@ const ManageProducts = () => {
       {/* Bộ lọc sắp xếp */}
       <FormControl fullWidth sx={{ mb: 2 }}>
         <InputLabel>Sắp xếp theo</InputLabel>
-        <Select value={sortFilter} onChange={(e) => setSortFilter(e.target.value)}>
+        <Select
+          value={sortFilter}
+          onChange={(e) => setSortFilter(e.target.value)}
+        >
           <MenuItem value="">Tất cả</MenuItem>
           <MenuItem value="Mới nhất">Mới nhất</MenuItem>
           <MenuItem value="Cũ nhất">Cũ nhất</MenuItem>
@@ -138,7 +217,7 @@ const ManageProducts = () => {
         color="primary"
         startIcon={<Add />}
         sx={{ mb: 3 }}
-        onClick={() => alert("Thêm sản phẩm chưa được triển khai!")}
+        onClick={() => navigate("/add-product")} // Correct navigation function
       >
         Thêm sản phẩm
       </Button>
@@ -164,17 +243,164 @@ const ManageProducts = () => {
                 </Typography>
               </CardContent>
               <CardActions>
-                <IconButton color="primary" onClick={() => alert("Chỉnh sửa chưa triển khai!")}>
+                <IconButton
+                  color="primary"
+                  onClick={() => navigate(`/edit-product/${product._id}`)}
+                >
                   <Edit />
                 </IconButton>
-                <IconButton color="error" onClick={() => handleDelete(product._id)}>
+
+                <IconButton
+                  color="error"
+                  onClick={() => handleDelete(product._id)}
+                >
                   <Delete />
+                </IconButton>
+                <IconButton
+                  color="default"
+                  onClick={() => handleViewDetails(product)}
+                >
+                  <Visibility />
                 </IconButton>
               </CardActions>
             </Card>
           </Grid>
         ))}
       </Grid>
+
+      {/* Dialog xem chi tiết sản phẩm */}
+      {/* Dialog xem chi tiết sản phẩm */}
+      <Dialog
+        open={!!selectedProduct}
+        onClose={handleCloseDialog}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Chi tiết sản phẩm</DialogTitle>
+        <DialogContent>
+          {selectedProduct && (
+            <>
+              {/* Ảnh chính + ảnh phụ */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "15px",
+                }}
+              >
+                {/* Ảnh chính */}
+                <CardMedia
+                  component="img"
+                  height="350"
+                  sx={{
+                    maxWidth: "100%",
+                    borderRadius: "10px",
+                    objectFit: "contain",
+                  }}
+                  image={
+                    selectedProduct.displayImage ||
+                    selectedProduct.mainImage ||
+                    "https://via.placeholder.com/350"
+                  }
+                  alt={selectedProduct.name}
+                />
+
+                {/* Ảnh phụ hiển thị dạng lưới */}
+                <Grid container spacing={1} justifyContent="center">
+                  {/* Ảnh chính được đưa vào danh sách ảnh phụ */}
+                  {[
+                    selectedProduct.mainImage,
+                    ...(selectedProduct.additionalImages || []),
+                  ].map((img, index) => (
+                    <Grid item key={index}>
+                      <CardMedia
+                        component="img"
+                        height="80"
+                        sx={{
+                          width: "80px",
+                          cursor: "pointer",
+                          borderRadius: "8px",
+                          objectFit: "cover",
+                          border:
+                            selectedProduct.displayImage === img
+                              ? "3px solid #1976d2"
+                              : "2px solid #ddd",
+                          transition: "border 0.3s",
+                        }}
+                        image={img}
+                        alt={`Ảnh ${index}`}
+                        onClick={() =>
+                          setSelectedProduct({
+                            ...selectedProduct,
+                            displayImage: img,
+                          })
+                        }
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
+              </div>
+
+              {/* Thông tin sản phẩm */}
+              <Typography variant="h5" sx={{ mt: 3 }}>
+                {selectedProduct.name}
+              </Typography>
+              <Typography>
+                <strong>Giá:</strong> {selectedProduct.price.toLocaleString()}{" "}
+                VNĐ
+              </Typography>
+              <Typography>
+                <strong>Danh mục chính:</strong>{" "}
+                {selectedProduct.parentCategory?.name || "Không có"}
+              </Typography>
+              <Typography>
+                <strong>Danh mục phụ:</strong>{" "}
+                {selectedProduct.subCategory?.name || "Không có"}
+              </Typography>
+              <Typography>
+                <strong>Nhà cung cấp:</strong>{" "}
+                {selectedProduct.supplier?.name || "Không có"}
+              </Typography>
+              <Typography>
+                <strong>Đơn vị:</strong> {selectedProduct.unit}
+              </Typography>
+              <Typography>
+                <strong>Số lượng tồn kho:</strong> {selectedProduct.stock}
+              </Typography>
+              <Typography>
+                <strong>Đánh giá:</strong>
+                <Rating
+                  value={selectedProduct.rating || 0}
+                  readOnly
+                  size="small"
+                  sx={{ verticalAlign: "middle" }}
+                />
+              </Typography>
+              {/* Mô tả sản phẩm */}
+              <Typography variant="h6" sx={{ mt: 3 }}>
+                Mô tả sản phẩm
+              </Typography>
+              <Typography color="text.secondary">
+                {selectedProduct.description || "Không có mô tả"}
+              </Typography>
+
+              {/* Thông tin chi tiết */}
+              <Typography variant="h6" sx={{ mt: 3 }}>
+                Thông tin chi tiết
+              </Typography>
+              <Typography color="text.secondary">
+                {selectedProduct.details || "Không có mô tả"}
+              </Typography>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog} color="secondary">
+            Đóng
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };
