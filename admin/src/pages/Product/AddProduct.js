@@ -217,9 +217,7 @@ const AddProduct = () => {
     if (!formData.parentCategory) newErrors.parentCategory = "Danh mục chính là bắt buộc";
     if (!formData.supplier) newErrors.supplier = "Nhà cung cấp là bắt buộc";
     if (!formData.mainImage) newErrors.mainImage = "Ảnh chính là bắt buộc";
-    if (!formData.unit.trim()) newErrors.unit = "Đơn vị tính là bắt buộc";
-    if (!formData.description.trim()) newErrors.description = "Mô tả sản phẩm là bắt buộc";
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -483,7 +481,6 @@ const handleSubmit = async (e) => {
                 onChange={handleChange}
                 error={!!errors.unit}
                 helperText={errors.unit}
-                required
                 margin="normal"
               />
 
@@ -496,7 +493,6 @@ const handleSubmit = async (e) => {
                 onChange={handleChange}
                 error={!!errors.description}
                 helperText={errors.description}
-                required
                 margin="normal"
               />
             </Grid>

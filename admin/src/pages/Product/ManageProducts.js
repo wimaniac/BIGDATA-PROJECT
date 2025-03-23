@@ -19,6 +19,7 @@ import {
   DialogContent,
   DialogActions,
   Rating,
+  Pagination, // Import Pagination
 } from "@mui/material";
 import { Edit, Delete, Add, Visibility } from "@mui/icons-material";
 import axios from "axios";
@@ -32,10 +33,11 @@ const ManageProducts = () => {
   const [sortFilter, setSortFilter] = useState("");
   const [categories, setCategories] = useState([]);
   const [subcategories, setSubcategories] = useState([]);
-  const [selectedProduct, setSelectedProduct] = useState(null); // State for selected product
-  const [suppliers, setSuppliers] = useState([]); // State for suppliers
-  const navigate = useNavigate(); // Initialize useNavigate
-
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [suppliers, setSuppliers] = useState([]); 
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 12; 
+  const navigate = useNavigate(); 
   useEffect(() => {
     fetchProducts();
     fetchCategories();
@@ -105,6 +107,10 @@ const ManageProducts = () => {
     setSelectedProduct(null);
   };
 
+  const handlePageChange = (event, value) => {
+    setPage(value);
+  };
+
   const filteredProducts = products
     .filter((product) =>
       product.name.toLowerCase().includes(search.toLowerCase())
@@ -127,6 +133,11 @@ const ManageProducts = () => {
       }
       return 0;
     });
+
+  const paginatedProducts = filteredProducts.slice(
+    (page - 1) * itemsPerPage,
+    page * itemsPerPage
+  );
 
   return (
     <Container>
@@ -224,18 +235,27 @@ const ManageProducts = () => {
 
       {/* Hiển thị danh sách sản phẩm */}
       <Grid container spacing={3}>
-        {filteredProducts.map((product) => (
+        {paginatedProducts.map((product) => (
           <Grid item xs={12} sm={6} md={3} key={product._id}>
-            <Card>
+            <Card sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
               <CardMedia
                 component="img"
                 height="200"
                 image={product.mainImage || "https://via.placeholder.com/200"}
                 alt={product.name}
               />
-              <CardContent>
+              <CardContent sx={{ flexGrow: 1 }}>
                 <Typography variant="h6">{product.name}</Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{
+                    display: "-webkit-box",
+                    WebkitBoxOrient: "vertical",
+                    WebkitLineClamp: 3,
+                    overflow: "hidden",
+                  }}
+                >
                   {product.description}
                 </Typography>
                 <Typography variant="body1" color="primary">
@@ -268,7 +288,14 @@ const ManageProducts = () => {
         ))}
       </Grid>
 
-      {/* Dialog xem chi tiết sản phẩm */}
+      {/* Pagination */}
+      <Pagination
+        count={Math.ceil(filteredProducts.length / itemsPerPage)}
+        page={page}
+        onChange={handlePageChange}
+        sx={{ mt: 3, display: "flex", justifyContent: "center" }}
+      />
+
       {/* Dialog xem chi tiết sản phẩm */}
       <Dialog
         open={!!selectedProduct}
@@ -276,7 +303,6 @@ const ManageProducts = () => {
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle>Chi tiết sản phẩm</DialogTitle>
         <DialogContent>
           {selectedProduct && (
             <>

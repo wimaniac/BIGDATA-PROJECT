@@ -76,7 +76,13 @@ const ManageCategory = () => {
       setSnackbar({ open: true, message: "Thêm danh mục thành công!", severity: "success" });
     } catch (error) {
       console.error("Lỗi thêm danh mục:", error);
-      setSnackbar({ open: true, message: "Lỗi thêm danh mục!", severity: "error" });
+      let errorMessage = "Lỗi thêm danh mục!";
+      if (error.response?.data?.code === 11000) {
+        errorMessage = "Tên danh mục đã tồn tại!";
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      setSnackbar({ open: true, message: errorMessage, severity: "error" });
     }
   };
 

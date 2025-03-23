@@ -35,6 +35,7 @@ const EditProduct = () => {
   const [suppliers, setSuppliers] = useState([]);
   const [selectedMainImage, setSelectedMainImage] = useState(null);
   const [selectedAdditionalImages, setSelectedAdditionalImages] = useState([]);
+  const [removeImages, setRemoveImages] = useState([]);
 
   useEffect(() => {
     fetchProduct();
@@ -103,6 +104,11 @@ const EditProduct = () => {
         }
       });
   
+      // Gửi danh sách ảnh cần xóa
+      if (removeImages.length > 0) {
+        formData.append("removeAdditionalImages", JSON.stringify(removeImages));
+      }
+  
       // Thêm ảnh chính nếu có ảnh mới
       if (selectedMainImage) {
         formData.append("mainImage", selectedMainImage);
@@ -127,13 +133,18 @@ const EditProduct = () => {
     }
   };
   
+  
   const handleReplaceImage = (e, index) => {
     const file = e.target.files[0];
     if (file) {
+      const updatedImages = [...selectedAdditionalImages];
+      updatedImages[index] = file; // Cập nhật file ảnh phụ tại vị trí index
+      setSelectedAdditionalImages(updatedImages);
+  
       const imageUrl = URL.createObjectURL(file);
-      const updatedImages = [...productData.additionalImages];
-      updatedImages[index] = imageUrl; // Cập nhật ảnh phụ tại vị trí index
-      setProductData((prev) => ({ ...prev, additionalImages: updatedImages }));
+      const updatedImageUrls = [...productData.additionalImages];
+      updatedImageUrls[index] = imageUrl; // Cập nhật URL ảnh phụ tại vị trí index
+      setProductData((prev) => ({ ...prev, additionalImages: updatedImageUrls }));
     }
   };
   
@@ -144,6 +155,7 @@ const EditProduct = () => {
       ...prev,
       additionalImages: [...prev.additionalImages, ...newImages],
     }));
+    setSelectedAdditionalImages((prev) => [...prev, ...files]); // Thêm file ảnh mới vào state
   };
   
   const handleMainImageChange = (e) => {
@@ -156,11 +168,19 @@ const EditProduct = () => {
   };
 
   const handleRemoveImage = (index) => {
+    const imageToRemove = productData.additionalImages[index];
+    setRemoveImages((prev) => [...prev, imageToRemove]); // Lưu ảnh vào danh sách cần xóa
+  
+    // Cập nhật UI
     const updatedImages = [...productData.additionalImages];
-    updatedImages.splice(index, 1); // Xóa ảnh tại vị trí index
+    updatedImages.splice(index, 1);
     setProductData({ ...productData, additionalImages: updatedImages });
+  
+    // Xóa luôn trong danh sách file ảnh mới chọn
+    const updatedSelectedImages = [...selectedAdditionalImages];
+    updatedSelectedImages.splice(index, 1);
+    setSelectedAdditionalImages(updatedSelectedImages);
   };
-
   return (
     <Container>
       <Typography variant="h4" gutterBottom>

@@ -137,7 +137,7 @@ router.put("/:id", async (req, res) => {
 // Delete user
 router.delete("/:id", async (req, res) => {
     try {
-      if (req.user.role !== "admin") {
+      if (!req.user || req.user.role !== "admin") {
         return res.status(403).json({ message: "Không có quyền xóa User!" });
       }
   
@@ -156,5 +156,70 @@ router.delete("/:id", async (req, res) => {
     }
   });
   
+
+// Google Login
+router.post("/auth/google-login", async (req, res) => {
+  const { tokenId } = req.body;
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken: tokenId,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const { email_verified, name, email, picture } = ticket.getPayload();
+
+    if (email_verified) {
+      let user = await User.findOne({ email });
+      if (!user) {
+        user = new User({
+          name,
+          email,
+          googleId: ticket.getUserId(),
+          avatar: picture,
+          provider: "google",
+        });
+        await user.save();
+      }
+      const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+        expiresIn: "1d",
+      });
+      res.json({ token, user });
+    } else {
+      res.status(400).json({ message: "Email không được xác thực!" });
+    }
+  } catch (error) {
+    res.status(500).json({ message: "Lỗi server!", error: error.message });
+  }
+});
+
+// Google Register
+router.post("/auth/google-register", async (req, res) => {
+  const { tokenId } = req.body;
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken: tokenId,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const { email_verified, name, email, picture } = ticket.getPayload();
+
+    if (email_verified) {
+      let user = await User.findOne({ email });
+      if (!user) {
+        user = new User({
+          name,
+          email,
+          googleId: ticket.getUserId(),
+          avatar: picture,
+          provider: "google",
+        });
+        await user.save();
+      }
+      res.status(201).json({ message: "Đăng ký thành công!", user });
+    } else {
+      res.status(400).json({ message: "Email không được xác thực!" });
+    }
+  } catch (error) {
+    res.status(500).json({ message: "Lỗi server!", error: error.message });
+  }
+});
 
 export default router;

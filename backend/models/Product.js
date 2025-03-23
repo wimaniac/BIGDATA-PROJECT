@@ -28,9 +28,8 @@ const productSchema = new mongoose.Schema(
     additionalImages: { type: [String], default: [] }, 
     ratings: { type: Number, default: 0 },
     details: { type: String, default: "" },
-    unit: { type: String, required: true }, 
+    unit: { type: String, default: "" }, 
     totalSold: { type: Number, default: 0 },
-
   },
   { timestamps: true }
 );
