@@ -10,6 +10,7 @@ import cron from "node-cron";
 import updateBestSellers from "./jobs/updateBestSellers.js";
 import runInventoryJobTracker from "./jobs/inventoryJobTracker.js";
 import cartRoutes from "./routes/cartRoutes.js";
+
 dotenv.config();
 
 if (!process.env.CONNECT_STRING) {
@@ -49,9 +50,12 @@ const connectDB = async () => {
 
 const startServer = () => {
   const app = express();
-  app.use(cors());
+  app.use(cors({
+    origin: ["http://localhost:3000", "http://localhost:3001"],
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }));
   app.use(express.json()); // ✅ Quan trọng: Đảm bảo server hỗ trợ JSON
-
   app.get("/", (req, res) => {
     res.send("API Siêu thị đang chạy...");
   });

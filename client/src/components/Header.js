@@ -129,16 +129,21 @@ const Header = () => {
   const [anchorUserEl, setAnchorUserEl] = useState(null); // Add anchor for user menu
 
   useEffect(() => {
-    fetchParentCategories();
-    // Fetch user data from local storage or API
-    const fetchUser = async () => {
+    const fetchUser = () => {
       const userData = JSON.parse(localStorage.getItem("user"));
-      if (userData) {
-        setUser(userData);
-      }
+      setUser(userData || null);
     };
-    fetchUser();
+  
+    fetchUser(); // Load user khi component mount
+  
+    // Lắng nghe sự kiện cập nhật user sau khi đăng nhập
+    window.addEventListener("userUpdated", fetchUser);
+  
+    return () => {
+      window.removeEventListener("userUpdated", fetchUser);
+    };
   }, []);
+  
 
   const fetchParentCategories = async () => {
     try {

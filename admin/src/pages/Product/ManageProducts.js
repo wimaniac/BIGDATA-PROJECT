@@ -228,7 +228,7 @@ const ManageProducts = () => {
         color="primary"
         startIcon={<Add />}
         sx={{ mb: 3 }}
-        onClick={() => navigate("/add-product")} // Correct navigation function
+        onClick={() => navigate("/manage-add-product")} // Correct navigation function
       >
         Thêm sản phẩm
       </Button>
@@ -265,7 +265,7 @@ const ManageProducts = () => {
               <CardActions>
                 <IconButton
                   color="primary"
-                  onClick={() => navigate(`/edit-product/${product._id}`)}
+                  onClick={() => navigate(`/manage-edit-product/${product._id}`)}
                 >
                   <Edit />
                 </IconButton>

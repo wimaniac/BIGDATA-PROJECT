@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import AuthForm from "../../components/AuthForm";
 import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
+import { toast } from "react-toastify"; // Import toast
+import "react-toastify/dist/ReactToastify.css"; // Import CSS của react-toastify
 
 const Register = () => {
   const navigate = useNavigate();
@@ -15,7 +17,10 @@ const Register = () => {
     try {
       const response = await axios.post("http://localhost:5000/api/users", formData);
       localStorage.setItem("user", JSON.stringify(response.data.user)); // Lưu thông tin user vào localStorage
-      navigate("/"); // Chuyển hướng sau khi đăng ký thành công
+      toast.success("Đăng ký thành công!"); // Thông báo đăng ký thành công
+      setTimeout(() => {
+        window.location.href = "/"; // Chuyển hướng sau khi đăng ký thành công
+      }, 2000);
     } catch (error) {
       setError(error.response?.data?.message || "Đăng ký thất bại!");
     }
@@ -27,8 +32,10 @@ const Register = () => {
         tokenId: response.credential,
       });
       localStorage.setItem("user", JSON.stringify(res.data.user)); // Lưu thông tin user vào localStorage
-      alert("Đăng ký thành công!"); // Thông báo đăng ký thành công
-      navigate("/"); // Chuyển hướng sau khi đăng ký thành công
+      toast.success("Đăng ký thành công!"); // Thông báo đăng ký thành công
+      setTimeout(() => {
+        window.location.href = "/"; // Chuyển hướng sau khi đăng ký thành công
+      }, 2000);
     } catch (error) {
       setError(error.response?.data?.message || "Đăng ký bằng Google thất bại!");
     }

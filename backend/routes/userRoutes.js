@@ -1,9 +1,10 @@
 import express from "express";
 import User from "../models/User.js";
-import bcrypt from "bcryptjs"; // Thêm bcrypt để mã hóa mật khẩu
-import validator from "validator"; // Thêm validator để kiểm tra email
+import bcrypt from "bcryptjs";
+import validator from "validator";
 import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
+import { authMiddleware } from "../middleware/auth.js"; // Import middleware
 
 const router = express.Router();
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -29,8 +30,23 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// Create a new user
-
+router.get("/me", authMiddleware, async (req, res) => {
+  try {
+    console.log("req.user in /me:", req.user); // Debug
+    if (!req.user || !req.user.id) {
+      return res.status(400).json({ message: "User ID not found in request" });
+    }
+    if (!mongoose.Types.ObjectId.isValid(req.user.id)) {
+      return res.status(400).json({ message: "Invalid user ID format" });
+    }
+    const user = await User.findById(req.user.id).select("-password");
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.json(user);
+  } catch (error) {
+    console.error("Error fetching user info:", error.message);
+    res.status(500).json({ message: error.message });
+  }
+});
 // Tạo tài khoản mới (Tự động tạo admin nếu chưa có)
 router.post("/", async (req, res) => {
     try {
@@ -76,7 +92,7 @@ router.post("/", async (req, res) => {
         password: hashedPassword,
         role: assignedRole,
         isAdmin: assignedRole === "admin",
-        googleId: googleId || null,
+        googleId: googleId || undefined,
         avatar: avatar || null,
         provider: googleId ? "google" : "local"
       });
@@ -161,11 +177,15 @@ router.delete("/:id", async (req, res) => {
 router.post("/auth/google-login", async (req, res) => {
   const { tokenId } = req.body;
   try {
+    console.log("Received tokenId:", tokenId); // Log the received tokenId
     const ticket = await client.verifyIdToken({
       idToken: tokenId,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
-    const { email_verified, name, email, picture } = ticket.getPayload();
+    const payload = ticket.getPayload();
+    console.log("Google payload:", payload); // Log the payload received from Google
+
+    const { email_verified, name, email, picture } = payload;
 
     if (email_verified) {
       let user = await User.findOne({ email });
@@ -184,10 +204,11 @@ router.post("/auth/google-login", async (req, res) => {
       });
       res.json({ token, user });
     } else {
-      res.status(400).json({ message: "Email không được xác thực!" });
+      res.status(400).json({ message: "Email not verified!" });
     }
   } catch (error) {
-    res.status(500).json({ message: "Lỗi server!", error: error.message });
+    console.error("Error during Google login:", error); // Log the error
+    res.status(500).json({ message: "Server error!", error: error.message });
   }
 });
 
@@ -219,6 +240,32 @@ router.post("/auth/google-register", async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ message: "Lỗi server!", error: error.message });
+  }
+});
+
+// Login user
+router.post("/auth/login", async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found!" });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid credentials!" });
+    }
+
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "1d",
+    });
+
+    res.json({ token, user });
+  } catch (error) {
+    console.error("Login error:", error); // Log the error
+    res.status(500).json({ message: "Server error!", error: error.message });
   }
 });
 
