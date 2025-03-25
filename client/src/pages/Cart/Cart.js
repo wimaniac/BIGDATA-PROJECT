@@ -14,7 +14,11 @@ import {
 import { styled } from "@mui/material/styles";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
-import { Delete as DeleteIcon, Add as AddIcon, Remove as RemoveIcon } from "@mui/icons-material";
+import {
+  Delete as DeleteIcon,
+  Add as AddIcon,
+  Remove as RemoveIcon,
+} from "@mui/icons-material";
 
 // Styled components
 const CartItemCard = styled(Card)(({ theme }) => ({
@@ -54,7 +58,9 @@ const Cart = () => {
       }
 
       try {
-        const response = await axios.get(`http://localhost:5000/api/cart/${userId}`);
+        const response = await axios.get(
+          `http://localhost:5000/api/cart/${userId}`
+        );
         setCart(response.data);
         setLoading(false);
       } catch (error) {
@@ -68,11 +74,14 @@ const Cart = () => {
 
   const handleQuantityChange = async (productId, newQuantity) => {
     try {
-      const response = await axios.put("http://localhost:5000/api/cart/update", {
-        userId,
-        productId,
-        quantity: Math.max(1, newQuantity),
-      });
+      const response = await axios.put(
+        "http://localhost:5000/api/cart/update",
+        {
+          userId,
+          productId,
+          quantity: Math.max(1, newQuantity),
+        }
+      );
       setCart(response.data.cart);
     } catch (error) {
       console.error("Lỗi cập nhật số lượng:", error);
@@ -82,9 +91,12 @@ const Cart = () => {
 
   const handleRemoveItem = async (productId) => {
     try {
-      const response = await axios.delete("http://localhost:5000/api/cart/remove", {
-        data: { userId, productId },
-      });
+      const response = await axios.delete(
+        "http://localhost:5000/api/cart/remove",
+        {
+          data: { userId, productId },
+        }
+      );
       setCart(response.data.cart);
     } catch (error) {
       console.error("Lỗi xóa sản phẩm:", error);
@@ -108,7 +120,7 @@ const Cart = () => {
     try {
       const orderData = {
         userId,
-        items: cart.items.map(item => ({
+        items: cart.items.map((item) => ({
           productId: item.productId._id,
           quantity: item.quantity,
           price: item.productId.price,
@@ -117,7 +129,10 @@ const Cart = () => {
         status: "pending", // Trạng thái mặc định
       };
 
-      const response = await axios.post("http://localhost:5000/api/orders", orderData);
+      const response = await axios.post(
+        "http://localhost:5000/api/orders",
+        orderData
+      );
       console.log("Tạo đơn hàng thành công:", response.data);
 
       // Xóa giỏ hàng sau khi thanh toán (tùy chọn)
@@ -137,7 +152,12 @@ const Cart = () => {
   };
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        height="100vh"
+      >
         <Typography variant="h6">Đang tải...</Typography>
       </Box>
     );
@@ -160,7 +180,12 @@ const Cart = () => {
           Giỏ hàng của bạn đang trống!
         </Typography>
         <Box display="flex" justifyContent="center" mt={2}>
-          <Button variant="contained" color="primary" component={Link} to="/shop">
+          <Button
+            variant="contained"
+            color="primary"
+            component={Link}
+            to="/shop"
+          >
             Tiếp tục mua sắm
           </Button>
         </Box>
@@ -180,7 +205,9 @@ const Cart = () => {
             <CartItemCard key={item.productId._id}>
               <CardMedia
                 component="img"
-                image={item.productId.mainImage || "https://via.placeholder.com/100"}
+                image={
+                  item.productId.mainImage || "https://via.placeholder.com/100"
+                }
                 alt={item.productId.name}
                 sx={{ width: 100, height: 100, objectFit: "contain", mr: 2 }}
               />
@@ -191,7 +218,12 @@ const Cart = () => {
                 </Typography>
                 <Box display="flex" alignItems="center" mt={1}>
                   <IconButton
-                    onClick={() => handleQuantityChange(item.productId._id, item.quantity - 1)}
+                    onClick={() =>
+                      handleQuantityChange(
+                        item.productId._id,
+                        item.quantity - 1
+                      )
+                    }
                     disabled={item.quantity <= 1}
                   >
                     <RemoveIcon />
@@ -199,13 +231,21 @@ const Cart = () => {
                   <TextField
                     value={item.quantity}
                     onChange={(e) =>
-                      handleQuantityChange(item.productId._id, Number(e.target.value))
+                      handleQuantityChange(
+                        item.productId._id,
+                        Number(e.target.value)
+                      )
                     }
                     inputProps={{ min: 1, type: "number" }}
                     sx={{ width: 60, mx: 1 }}
                   />
                   <IconButton
-                    onClick={() => handleQuantityChange(item.productId._id, item.quantity + 1)}
+                    onClick={() =>
+                      handleQuantityChange(
+                        item.productId._id,
+                        item.quantity + 1
+                      )
+                    }
                   >
                     <AddIcon />
                   </IconButton>
@@ -226,8 +266,13 @@ const Cart = () => {
             <Typography variant="h5" color="primary" sx={{ mb: 2 }}>
               {calculateTotal().toLocaleString()} VNĐ
             </Typography>
-            <CheckoutButton variant="contained" color="primary" fullWidth>
-              Thanh toán
+            <CheckoutButton
+              variant="contained"
+              color="primary"
+              fullWidth
+              onClick={() => navigate("/checkout")}
+            >
+              Chiến hành thanh toán
             </CheckoutButton>
           </Card>
         </Grid>

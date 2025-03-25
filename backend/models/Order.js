@@ -19,6 +19,17 @@ const orderSchema = new mongoose.Schema(
       },
     ],
     totalAmount: { type: Number, required: true },
+    shippingInfo: {
+      name: { type: String },
+      address: {
+        street: { type: String },
+        ward: { type: String },
+        district: { type: String },
+        city: { type: String },
+        country: { type: String },
+      },
+      phone: { type: String },
+    }, 
     status: {
       type: String,
       default: "Đang xử lí",

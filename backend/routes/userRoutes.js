@@ -133,19 +133,11 @@ router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: "Invalid user ID" });
-    }
-
     const updatedUser = await User.findByIdAndUpdate(id, updateData, { new: true });
-    if (!updatedUser) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
+    if (!updatedUser) return res.status(404).json({ message: "User not found" });
     res.json(updatedUser);
   } catch (err) {
-    res.status(500).json({ message: "Server error!", error: err.message });
+    res.status(500).json({ message: err.message });
   }
 });
 router.put("/:id/role", async (req, res) => {

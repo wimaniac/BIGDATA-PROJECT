@@ -8,8 +8,10 @@ import productRoutes from "./routes/productRoutes.js";
 import supplierRoutes from "./routes/supplierRoutes.js";
 import cron from "node-cron";
 import updateBestSellers from "./jobs/updateBestSellers.js";
-import runInventoryJobTracker from "./jobs/inventoryJobTracker.js";
+import * as inventoryJobTracker from "./jobs/inventoryJobTracker.js";
 import cartRoutes from "./routes/cartRoutes.js";
+import orderRoutes from "./routes/orderRoutes.js";
+import paymentRoutes from "./routes/paymentRoutes.js"; 
 
 dotenv.config();
 
@@ -33,7 +35,7 @@ const connectDB = async () => {
       console.log("⏳ Đang chạy JobTracker...");
       try {
         await updateBestSellers();
-        await runInventoryJobTracker();
+        await inventoryJobTracker.runInventoryJobTracker();
         console.log("✅ JobTracker chạy thành công!");
       } catch (error) {
         console.error("❌ Lỗi khi chạy JobTracker:", error);
@@ -64,6 +66,8 @@ const startServer = () => {
   app.use("/api/products", productRoutes);
   app.use("/api/suppliers", supplierRoutes);
   app.use("/api/cart", cartRoutes);
+  app.use("/api/orders", orderRoutes);
+  app.use("/api/payments", paymentRoutes);
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => console.log(`🚀 Máy chủ đang chạy trên cổng ${PORT}`));
   console.log("JWT_SECRET:", process.env.JWT_SECRET);
