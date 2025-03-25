@@ -20,7 +20,7 @@ import {
   Remove as RemoveIcon,
 } from "@mui/icons-material";
 
-// Styled components
+// Styled components (giữ nguyên)
 const CartItemCard = styled(Card)(({ theme }) => ({
   display: "flex",
   alignItems: "center",
@@ -47,8 +47,9 @@ const Cart = () => {
   const [cart, setCart] = useState(null);
   const [loading, setLoading] = useState(true);
   const user = JSON.parse(localStorage.getItem("user"));
-  const userId = localStorage.getItem("userId") || (user && user._id); // Ưu tiên userId, fallback về user._id
+  const userId = localStorage.getItem("userId") || (user && user._id);
   console.log("userId từ localStorage:", userId);
+
   useEffect(() => {
     const fetchCart = async () => {
       if (!userId) {
@@ -61,7 +62,26 @@ const Cart = () => {
         const response = await axios.get(
           `http://localhost:5000/api/cart/${userId}`
         );
-        setCart(response.data);
+        const cartData = response.data;
+
+        // Lấy giá sau giảm cho từng sản phẩm
+        const updatedItems = await Promise.all(
+          cartData.items.map(async (item) => {
+            const discountResponse = await axios.get(
+              `http://localhost:5000/api/discounts/apply/${item.productId._id}`
+            );
+            return {
+              ...item,
+              productId: {
+                ...item.productId,
+                originalPrice: discountResponse.data.originalPrice,
+                discountedPrice: discountResponse.data.discountedPrice,
+              },
+            };
+          })
+        );
+
+        setCart({ ...cartData, items: updatedItems });
         setLoading(false);
       } catch (error) {
         console.error("Lỗi lấy giỏ hàng:", error);
@@ -82,7 +102,8 @@ const Cart = () => {
           quantity: Math.max(1, newQuantity),
         }
       );
-      setCart(response.data.cart);
+      setCart(response.data.cart || null); // Đảm bảo không đặt undefined
+      window.dispatchEvent(new Event("cartUpdated")); // Cập nhật Header
     } catch (error) {
       console.error("Lỗi cập nhật số lượng:", error);
       alert("Có lỗi xảy ra khi cập nhật số lượng!");
@@ -91,13 +112,16 @@ const Cart = () => {
 
   const handleRemoveItem = async (productId) => {
     try {
-      const response = await axios.delete(
-        "http://localhost:5000/api/cart/remove",
+      const response = await axios.put(
+        "http://localhost:5000/api/cart/update",
         {
-          data: { userId, productId },
+          userId,
+          productId,
+          quantity: 0,
         }
       );
-      setCart(response.data.cart);
+      setCart(response.data.cart || null);
+      window.dispatchEvent(new Event("cartUpdated"));
     } catch (error) {
       console.error("Lỗi xóa sản phẩm:", error);
       alert("Có lỗi xảy ra khi xóa sản phẩm!");
@@ -201,61 +225,85 @@ const Cart = () => {
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={8}>
-          {cart.items.map((item) => (
-            <CartItemCard key={item.productId._id}>
-              <CardMedia
-                component="img"
-                image={
-                  item.productId.mainImage || "https://via.placeholder.com/100"
-                }
-                alt={item.productId.name}
-                sx={{ width: 100, height: 100, objectFit: "contain", mr: 2 }}
-              />
-              <CardContent sx={{ flex: 1 }}>
-                <Typography variant="h6">{item.productId.name}</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {item.productId.price.toLocaleString()} VNĐ
-                </Typography>
-                <Box display="flex" alignItems="center" mt={1}>
-                  <IconButton
-                    onClick={() =>
-                      handleQuantityChange(
-                        item.productId._id,
-                        item.quantity - 1
-                      )
-                    }
-                    disabled={item.quantity <= 1}
-                  >
-                    <RemoveIcon />
-                  </IconButton>
-                  <TextField
-                    value={item.quantity}
-                    onChange={(e) =>
-                      handleQuantityChange(
-                        item.productId._id,
-                        Number(e.target.value)
-                      )
-                    }
-                    inputProps={{ min: 1, type: "number" }}
-                    sx={{ width: 60, mx: 1 }}
-                  />
-                  <IconButton
-                    onClick={() =>
-                      handleQuantityChange(
-                        item.productId._id,
-                        item.quantity + 1
-                      )
-                    }
-                  >
-                    <AddIcon />
-                  </IconButton>
-                </Box>
-              </CardContent>
-              <IconButton onClick={() => handleRemoveItem(item.productId._id)}>
-                <DeleteIcon color="error" />
-              </IconButton>
-            </CartItemCard>
-          ))}
+          {cart && cart.items && cart.items.length > 0 ? (
+            cart.items.map((item) => (
+              <CartItemCard key={item.productId._id}>
+                <CardMedia
+                  component="img"
+                  image={
+                    item.productId.mainImage ||
+                    "https://via.placeholder.com/100"
+                  }
+                  alt={item.productId.name}
+                  sx={{ width: 100, height: 100, objectFit: "contain", mr: 2 }}
+                />
+                <CardContent sx={{ flex: 1 }}>
+                  <Typography variant="h6">{item.productId.name}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {item.productId.discountedPrice !==
+                    item.productId.originalPrice ? (
+                      <>
+                        <span
+                          style={{
+                            textDecoration: "line-through",
+                            color: "gray",
+                          }}
+                        >
+                          {item.productId.originalPrice.toLocaleString()} VNĐ
+                        </span>{" "}
+                        <span style={{ color: "red" }}>
+                          {item.productId.discountedPrice.toLocaleString()} VNĐ
+                        </span>
+                      </>
+                    ) : (
+                      `${item.productId.originalPrice.toLocaleString()} VNĐ`
+                    )}
+                  </Typography>
+                  <Box display="flex" alignItems="center" mt={1}>
+                    <IconButton
+                      onClick={() =>
+                        handleQuantityChange(
+                          item.productId._id,
+                          item.quantity - 1
+                        )
+                      }
+                      disabled={item.quantity <= 1}
+                    >
+                      <RemoveIcon />
+                    </IconButton>
+                    <TextField
+                      value={item.quantity}
+                      onChange={(e) =>
+                        handleQuantityChange(
+                          item.productId._id,
+                          Number(e.target.value)
+                        )
+                      }
+                      inputProps={{ min: 1 }}
+                      sx={{ width: 100, mx: 1 }}
+                    />
+                    <IconButton
+                      onClick={() =>
+                        handleQuantityChange(
+                          item.productId._id,
+                          item.quantity + 1
+                        )
+                      }
+                    >
+                      <AddIcon />
+                    </IconButton>
+                  </Box>
+                </CardContent>
+                <IconButton
+                  onClick={() => handleRemoveItem(item.productId._id)}
+                >
+                  <DeleteIcon color="error" />
+                </IconButton>
+              </CartItemCard>
+            ))
+          ) : (
+            <Typography>Không có sản phẩm trong giỏ hàng.</Typography>
+          )}
         </Grid>
 
         <Grid item xs={12} md={4}>
@@ -272,7 +320,7 @@ const Cart = () => {
               fullWidth
               onClick={() => navigate("/checkout")}
             >
-              Chiến hành thanh toán
+              Tiến hành thanh toán
             </CheckoutButton>
           </Card>
         </Grid>

@@ -123,14 +123,14 @@ const Checkout = () => {
     try {
       // 1. Tạo đơn hàng
       const orderData = {
-        user: userId, // Sửa từ userId thành user để khớp schema
+        user: userId,
         products: cart.items.map((item) => ({
-          product: item.productId._id, // Sửa từ productId thành product
+          product: item.productId._id,
           quantity: item.quantity,
         })),
-        totalAmount: calculateTotal(), // Sửa từ total thành totalAmount
-        shippingInfo: { name, address, phone }, // Giữ nguyên nếu bạn đã thêm shippingInfo vào schema
-        status: "Đang xử lí", // Sửa từ "pending" thành "Đang xử lí" để khớp enum
+        totalAmount: calculateTotal(),
+        shippingInfo: { name, address, phone },
+        status: "Đang xử lí",
       };
       console.log("Tạo đơn hàng với dữ liệu:", orderData);
       const orderResponse = await axios.post("http://localhost:5000/api/orders", orderData);
@@ -160,15 +160,12 @@ const Checkout = () => {
         }
       );
   
-      // 4. Xóa giỏ hàng
-      console.log("Xóa giỏ hàng với userId:", userId);
-      await axios.delete("http://localhost:5000/api/cart/remove", {
-        data: { userId },
-      });
+      // 4. Cập nhật state và thông báo cho Header
       setCart(null);
+      window.dispatchEvent(new Event("cartUpdated")); // Dispatch sự kiện cartUpdated
   
       alert("Thanh toán thành công!");
-      navigate("/");
+      navigate("/"); // Điều hướng về trang chủ
     } catch (error) {
       console.error("Lỗi khi thanh toán:", error);
       if (error.response) {

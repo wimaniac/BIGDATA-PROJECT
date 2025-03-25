@@ -27,7 +27,7 @@ import axios from "axios";
 import { Link } from "react-router-dom";
 import logo from "../assets/logo.jpg";
 
-// Styled components cho header
+// Styled components (giữ nguyên như cũ)
 const StyledAppBar = styled(AppBar)(({ theme }) => ({
   backgroundColor: "white",
   color: "black",
@@ -137,6 +137,7 @@ const Header = () => {
   const [searchValue, setSearchValue] = useState("");
   const [user, setUser] = useState(null);
   const [anchorUserEl, setAnchorUserEl] = useState(null);
+  const [cartCount, setCartCount] = useState(0); // Thêm state cho số lượng giỏ hàng
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -164,22 +165,42 @@ const Header = () => {
     const fetchCategories = async () => {
       try {
         const response = await axios.get("http://localhost:5000/api/categories/parents");
-        console.log("Parent categories:", response.data);
         setParentCategories(response.data);
       } catch (error) {
         console.error("Error fetching parent categories:", error);
       }
     };
 
+    const fetchCartCount = async () => {
+      const userId = localStorage.getItem("userId");
+      const token = localStorage.getItem("token");
+      if (userId && token) {
+        try {
+          const response = await axios.get(`http://localhost:5000/api/cart/${userId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const cartItems = response.data?.items || [];
+          const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+          setCartCount(totalItems);
+        } catch (error) {
+          console.error("Error fetching cart count:", error);
+          setCartCount(0); // Nếu lỗi, đặt số lượng về 0
+        }
+      }
+    };
+
     fetchUser();
     fetchCategories();
+    fetchCartCount();
 
     window.addEventListener("storage", fetchUser);
     window.addEventListener("userUpdated", fetchUser);
+    window.addEventListener("cartUpdated", fetchCartCount); 
 
     return () => {
       window.removeEventListener("storage", fetchUser);
       window.removeEventListener("userUpdated", fetchUser);
+      window.removeEventListener("cartUpdated", fetchCartCount);
     };
   }, []);
 
@@ -188,7 +209,6 @@ const Header = () => {
       const response = await axios.get(
         `http://localhost:5000/api/categories/subcategories/${parentId}`
       );
-      console.log(`Child categories for ${parentId}:`, response.data);
       setChildCategories((prev) => ({ ...prev, [parentId]: response.data }));
     } catch (error) {
       console.error("Error fetching child categories:", error);
@@ -240,6 +260,7 @@ const Header = () => {
     localStorage.removeItem("user");
     localStorage.removeItem("token");
     setUser(null);
+    setCartCount(0); // Reset giỏ hàng khi đăng xuất
     handleUserMenuClose();
     window.location.href = "/login";
   };
@@ -436,7 +457,7 @@ const Header = () => {
             <Tooltip title="Giỏ hàng">
               <StyledIconButton component={Link} to="/cart">
                 <Badge
-                  badgeContent={0}
+                  badgeContent={cartCount} // Hiển thị số lượng giỏ hàng
                   color="error"
                   sx={{
                     "& .MuiBadge-badge": {
@@ -470,6 +491,9 @@ const Header = () => {
                   <MenuItem component={Link} to="/account">
                     Thông tin tài khoản
                   </MenuItem>
+                  <MenuItem component={Link} to="/orders" onClick={handleUserMenuClose}>
+                    Đơn hàng
+                  </MenuItem> {/* Thêm mục Đơn hàng */}
                   <MenuItem onClick={handleLogout}>Đăng xuất</MenuItem>
                 </Menu>
               </>

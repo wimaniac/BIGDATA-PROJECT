@@ -15,6 +15,8 @@ import AddProduct from "./pages/Product/AddProduct";
 import EditProduct from "./pages/Product/EditProduct";
 import AccountInfo from "./pages/User/AccountInfo";
 import UserManagement from "./pages/User/UserManagement";
+import OrderManagement from "./pages/Order/OrderManagement";
+import ManageDiscounts from "./pages/Discount/ManageDiscounts";
 // Xóa ProtectedRoute
 function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -38,6 +40,8 @@ function App() {
         <Route path="/manage-edit-product/:id" element={<EditProduct />} />
         <Route path="/account-info" element={<AccountInfo />} />
         <Route path="/user-management" element={<UserManagement />} />
+        <Route path="/manage-orders" element={<OrderManagement />} />
+        <Route path="/manage-discounts" element={<ManageDiscounts />} />
       </Routes>
     </Router>
   );

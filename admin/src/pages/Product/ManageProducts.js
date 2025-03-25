@@ -34,10 +34,10 @@ const ManageProducts = () => {
   const [categories, setCategories] = useState([]);
   const [subcategories, setSubcategories] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [suppliers, setSuppliers] = useState([]); 
+  const [suppliers, setSuppliers] = useState([]);
   const [page, setPage] = useState(1);
-  const itemsPerPage = 12; 
-  const navigate = useNavigate(); 
+  const itemsPerPage = 12;
+  const navigate = useNavigate();
   useEffect(() => {
     fetchProducts();
     fetchCategories();
@@ -237,7 +237,9 @@ const ManageProducts = () => {
       <Grid container spacing={3}>
         {paginatedProducts.map((product) => (
           <Grid item xs={12} sm={6} md={3} key={product._id}>
-            <Card sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+            <Card
+              sx={{ height: "100%", display: "flex", flexDirection: "column" }}
+            >
               <CardMedia
                 component="img"
                 height="200"
@@ -258,14 +260,28 @@ const ManageProducts = () => {
                 >
                   {product.description}
                 </Typography>
-                <Typography variant="body1" color="primary">
-                  {product.price.toLocaleString()} VNĐ
+                <Typography variant="body1" color="text.secondary">
+                  {product.discountedPrice < product.originalPrice && (
+                    <span
+                      style={{
+                        textDecoration: "line-through",
+                        marginRight: "8px",
+                      }}
+                    >
+                      {product.originalPrice.toLocaleString()} VNĐ
+                    </span>
+                  )}
+                  <span style={{ color: "red" }}>
+                    {product.discountedPrice.toLocaleString()} VNĐ
+                  </span>
                 </Typography>
               </CardContent>
               <CardActions>
                 <IconButton
                   color="primary"
-                  onClick={() => navigate(`/manage-edit-product/${product._id}`)}
+                  onClick={() =>
+                    navigate(`/manage-edit-product/${product._id}`)
+                  }
                 >
                   <Edit />
                 </IconButton>

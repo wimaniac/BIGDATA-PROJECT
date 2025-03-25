@@ -172,33 +172,33 @@ const Sidebar = ({ children }) => {
           <Divider style={{ background: "#BDC3C7" }} />
 
           <List>
-            {[
-              { text: "Sản phẩm", icon: <Category />, path: "/manage-products" },
-              { text: "Danh mục", icon: <Category />, path: "/manage-categories" },
-              { text: "Nhà cung cấp", icon: <LocalShipping />, path: "/manage-suppliers" },
-              { text: "Người dùng", icon: <People />, path: "/user-management" }, // Giữ nguyên để điều hướng
-              { text: "Đơn hàng", icon: <ShoppingCart />, path: "/manage-orders" },
-              { text: "Giảm giá", icon: <LocalOffer />, path: "/manage-discounts" },
-              { text: "Kho hàng", icon: <Storage />, path: "/manage-inventory" },
-            ].map(({ text, icon, path }) => (
-              <ListItem
-                key={text}
-                onClick={() => handleNavigation(path)}
-                style={{
-                  padding: open ? "10px 16px" : "10px",
-                  transition: "padding 0.3s",
-                  "&:hover": {
-                    background: "#1A252F",
-                  },
-                }}
-              >
-                <ListItemIcon style={{ color: "#ECF0F1", minWidth: 40 }}>
-                  {icon}
-                </ListItemIcon>
-                {open && <ListItemText primary={text} />}
-              </ListItem>
-            ))}
-          </List>
+  {[
+    { text: "Sản phẩm", icon: <Category />, path: "/manage-products" },
+    { text: "Danh mục", icon: <Category />, path: "/manage-categories" },
+    { text: "Nhà cung cấp", icon: <LocalShipping />, path: "/manage-suppliers" },
+    { text: "Người dùng", icon: <People />, path: "/user-management" },
+    { text: "Đơn hàng", icon: <ShoppingCart />, path: "/manage-orders" },
+    { text: "Giảm giá", icon: <LocalOffer />, path: "/manage-discounts" },
+    { text: "Kho hàng", icon: <Storage />, path: "/manage-inventory" },
+  ].map(({ text, icon, path }) => (
+    <ListItem
+      key={text}
+      onClick={() => handleNavigation(path)}
+      style={{
+        padding: open ? "10px 16px" : "10px",
+        transition: "padding 0.3s",
+        "&:hover": {
+          background: "#1A252F",
+        },
+      }}
+    >
+      <ListItemIcon style={{ color: "#ECF0F1", minWidth: 40 }}>
+        {icon}
+      </ListItemIcon>
+      {open && <ListItemText primary={text} />}
+    </ListItem>
+  ))}
+</List>
         </div>
 
         <div style={{ padding: open ? "16px" : "16px 8px" }}>

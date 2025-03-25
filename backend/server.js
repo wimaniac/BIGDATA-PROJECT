@@ -12,7 +12,7 @@ import * as inventoryJobTracker from "./jobs/inventoryJobTracker.js";
 import cartRoutes from "./routes/cartRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js"; 
-
+import discountRoutes from "./routes/discountRoutes.js";
 dotenv.config();
 
 if (!process.env.CONNECT_STRING) {
@@ -68,6 +68,7 @@ const startServer = () => {
   app.use("/api/cart", cartRoutes);
   app.use("/api/orders", orderRoutes);
   app.use("/api/payments", paymentRoutes);
+  app.use("/api/discounts", discountRoutes);
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => console.log(`🚀 Máy chủ đang chạy trên cổng ${PORT}`));
   console.log("JWT_SECRET:", process.env.JWT_SECRET);

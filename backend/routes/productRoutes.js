@@ -4,7 +4,7 @@ import cloudinary from "cloudinary";
 import multer from "multer";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import dotenv from "dotenv";
-
+import axios from "axios";
 const router = express.Router();
 dotenv.config();
 
@@ -35,7 +35,21 @@ router.get("/", async (req, res) => {
       .populate("subCategory", "name")
       .populate("supplier", "name");
 
-    res.json(products);
+    // Thêm giá giảm cho từng sản phẩm
+    const productsWithDiscount = await Promise.all(
+      products.map(async (product) => {
+        const discountResponse = await axios.get(
+          `http://localhost:5000/api/discounts/apply/${product._id}`
+        );
+        return {
+          ...product.toObject(),
+          originalPrice: discountResponse.data.originalPrice,
+          discountedPrice: discountResponse.data.discountedPrice,
+        };
+      })
+    );
+
+    res.json(productsWithDiscount);
   } catch (error) {
     console.error("❌ Lỗi lấy danh sách sản phẩm:", error);
     res
@@ -52,7 +66,16 @@ router.get("/:id", async (req, res) => {
       .populate("subCategory", "name")
       .populate("supplier", "name");
     if (!product) return res.status(404).json({ message: "Product not found" });
-    res.json(product);
+
+    // Gọi API áp dụng giảm giá
+    const discountResponse = await axios.get(`http://localhost:5000/api/discounts/apply/${req.params.id}`);
+    const { originalPrice, discountedPrice } = discountResponse.data;
+
+    res.json({
+      ...product.toObject(),
+      originalPrice,
+      discountedPrice,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
