@@ -52,8 +52,7 @@ const startServer = () => {
   const app = express();
   app.use(cors({
     origin: ["http://localhost:3000", "http://localhost:3001"],
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
   }));
   app.use(express.json()); // ✅ Quan trọng: Đảm bảo server hỗ trợ JSON
   app.get("/", (req, res) => {
@@ -64,9 +63,10 @@ const startServer = () => {
   app.use("/api/categories", categoryRoutes);
   app.use("/api/products", productRoutes);
   app.use("/api/suppliers", supplierRoutes);
-  app.use("/api/carts", cartRoutes);
+  app.use("/api/cart", cartRoutes);
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => console.log(`🚀 Máy chủ đang chạy trên cổng ${PORT}`));
-};
+  console.log("JWT_SECRET:", process.env.JWT_SECRET);
 
+};
 connectDB();

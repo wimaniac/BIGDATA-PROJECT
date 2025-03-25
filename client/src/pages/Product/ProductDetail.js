@@ -1,14 +1,28 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  Container, Typography, Grid, Card, CardMedia, CircularProgress, Box, Button, 
-  IconButton, TextField, Breadcrumbs, Link
+  Container,
+  Typography,
+  Grid,
+  Card,
+  CardMedia,
+  Box,
+  Button,
+  IconButton,
+  TextField,
+  Breadcrumbs,
+  Link as MuiLink,
+  Snackbar,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import axios from "axios";
-import { ShoppingCart as ShoppingCartIcon, Add as AddIcon, Remove as RemoveIcon } from "@mui/icons-material";
-
-// 🔹 Style cho nút "Thêm vào giỏ hàng"
+import {
+  ShoppingCart as ShoppingCartIcon,
+  Add as AddIcon,
+  Remove as RemoveIcon,
+} from "@mui/icons-material";
+import { Link } from "react-router-dom";
+// Styled components
 const AddToCartButton = styled(Button)(({ theme }) => ({
   marginTop: theme.spacing(2),
   borderRadius: 8,
@@ -16,20 +30,22 @@ const AddToCartButton = styled(Button)(({ theme }) => ({
   fontWeight: "bold",
   padding: "12px 24px",
   fontSize: "16px",
+  backgroundColor: "#1976d2",
   "&:hover": {
     backgroundColor: "#1565c0",
   },
 }));
 
-// 🔹 Style cho hình ảnh sản phẩm phụ
 const ThumbnailImage = styled(CardMedia)(({ theme }) => ({
   width: 80,
   height: 80,
   cursor: "pointer",
   borderRadius: 8,
   transition: "0.3s",
+  border: "1px solid #e0e0e0",
   "&:hover": {
     transform: "scale(1.1)",
+    borderColor: "#1976d2",
   },
 }));
 
@@ -38,15 +54,18 @@ const ProductDetail = () => {
   const navigate = useNavigate();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedImage, setSelectedImage] = useState(""); // Ảnh chính được chọn
-  const [quantity, setQuantity] = useState(1); // Số lượng sản phẩm
+  const [selectedImage, setSelectedImage] = useState("");
+  const [quantity, setQuantity] = useState(1);
+  const [snackbarOpen, setSnackbarOpen] = useState(false); // Thông báo
 
   useEffect(() => {
     const fetchProduct = async () => {
       try {
-        const response = await axios.get(`http://localhost:5000/api/products/${id}`);
+        const response = await axios.get(
+          `http://localhost:5000/api/products/${id}`
+        );
         setProduct(response.data);
-        setSelectedImage(response.data.mainImage); // Hiển thị ảnh chính
+        setSelectedImage(response.data.mainImage);
         setLoading(false);
       } catch (error) {
         console.error("Lỗi lấy thông tin sản phẩm:", error);
@@ -58,39 +77,62 @@ const ProductDetail = () => {
   }, [id]);
 
   const handleIncrease = () => {
-    setQuantity(prevQuantity => prevQuantity + 1);
+    setQuantity((prev) => prev + 1);
   };
 
   const handleDecrease = () => {
-    setQuantity(prevQuantity => (prevQuantity > 1 ? prevQuantity - 1 : 1));
+    setQuantity((prev) => (prev > 1 ? prev - 1 : 1));
+  };
+  const handleAddToCart = async () => {
+    const userId = localStorage.getItem("userId");
+    console.log("userId:", userId);
+    console.log("productId:", id);
+    console.log("quantity:", quantity);
+    if (!userId) {
+      alert("Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng!");
+      navigate("/login");
+      return;
+    }
+    try {
+      console.log("Gửi yêu cầu đến: http://localhost:5000/api/cart/add");
+      const response = await axios.post("http://localhost:5000/api/cart/add", {
+        userId,
+        productId: id,
+        quantity,
+      });
+      console.log("Thêm vào giỏ hàng thành công:", response.data);
+      setSnackbarOpen(true);
+      setTimeout(() => navigate("/cart"), 1500);
+    } catch (error) {
+      console.error("Lỗi khi thêm vào giỏ hàng:", error);
+      if (error.response) {
+        console.log("Status:", error.response.status);
+        console.log("Data:", error.response.data);
+      }
+      alert("Có lỗi xảy ra khi thêm sản phẩm vào giỏ hàng!");
+    }
   };
 
-  const handleAddToCart = () => {
-    const cartItems = JSON.parse(localStorage.getItem("cartItems")) || [];
-    const itemIndex = cartItems.findIndex(item => item.id === product.id);
-  
-    if (itemIndex > -1) {
-      cartItems[itemIndex].quantity += quantity;
-    } else {
-      cartItems.push({ ...product, quantity });
-    }
-  
-    localStorage.setItem("cartItems", JSON.stringify(cartItems));
-    alert("Sản phẩm đã được thêm vào giỏ hàng!");
-    navigate("/cart"); // Chuyển hướng đến trang giỏ hàng
+  const handleSnackbarClose = () => {
+    setSnackbarOpen(false);
   };
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
-        <CircularProgress />
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        height="100vh"
+      >
+        <Typography variant="h6">Đang tải...</Typography>
       </Box>
     );
   }
 
   if (!product) {
     return (
-      <Container>
+      <Container sx={{ mt: 4 }}>
         <Typography variant="h5" color="error">
           ❌ Không tìm thấy sản phẩm!
         </Typography>
@@ -99,15 +141,30 @@ const ProductDetail = () => {
   }
 
   return (
-    <Container sx={{ mt: 4 }}>
-      {/* Breadcrumbs - hiển thị danh mục cha */}
-      <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 2 }}>
-        <Link underline="hover" color="inherit" href={`/category/${product.parentCategory._id}`}>
+    <Container sx={{ mt: 4, mb: 6 }}>
+      {/* Breadcrumb */}
+      <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 3 }}>
+        <MuiLink component={Link} to="/" underline="hover" color="inherit">
+          Trang chủ
+        </MuiLink>
+        <MuiLink
+          component={Link}
+          to={`/shop/${product.parentCategory._id}`}
+          underline="hover"
+          color="inherit"
+        >
           {product.parentCategory.name}
-        </Link>
-        <Link underline="hover" color="inherit" href={`/category/${product.subCategory._id}`}>
-          {product.subCategory.name}
-        </Link>
+        </MuiLink>
+        {product.subCategory && (
+          <MuiLink
+            component={Link}
+            to={`/shop/${product.subCategory._id}`}
+            underline="hover"
+            color="inherit"
+          >
+            {product.subCategory.name}
+          </MuiLink>
+        )}
         <Typography color="text.primary">{product.name}</Typography>
       </Breadcrumbs>
 
@@ -122,18 +179,16 @@ const ProductDetail = () => {
               alt={product.name}
               sx={{ objectFit: "contain", borderRadius: 2 }}
             />
-            <Box display="flex" justifyContent="center" mt={2}>
+            <Box display="flex" justifyContent="center" mt={2} gap={1}>
               <ThumbnailImage
                 image={product.mainImage}
                 onClick={() => setSelectedImage(product.mainImage)}
-                sx={{ mx: 1 }}
               />
               {product.additionalImages.map((image, index) => (
                 <ThumbnailImage
                   key={index}
                   image={image}
                   onClick={() => setSelectedImage(image)}
-                  sx={{ mx: 1 }}
                 />
               ))}
             </Box>
@@ -142,33 +197,42 @@ const ProductDetail = () => {
 
         {/* Thông tin sản phẩm */}
         <Grid item xs={12} md={6}>
-          <Typography variant="h4" sx={{ fontWeight: "bold", mb: 1 }}>
+          <Typography variant="h3" sx={{ fontWeight: "bold", mb: 2 }}>
             {product.name}
           </Typography>
 
-          <Typography variant="h5" color="primary" sx={{ fontWeight: "bold", mb: 2 }}>
+          <Typography
+            variant="h4"
+            color="primary"
+            sx={{ fontWeight: "bold", mb: 2 }}
+          >
             {product.price.toLocaleString()} VNĐ
           </Typography>
 
           <Typography variant="body1" sx={{ fontSize: "16px", mb: 2 }}>
-            {product.description}
+            {product.description || "Chưa có mô tả sản phẩm."}
           </Typography>
 
-          <Typography variant="body2" color="textSecondary" sx={{ fontStyle: "italic", mb: 2 }}>
-            {product.details}
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+            <strong>Chi tiết:</strong> {product.details || "Không có chi tiết."}
           </Typography>
 
-          <Box display="flex" alignItems="center" sx={{ mb: 2 }}>
-            <IconButton onClick={handleDecrease}>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+            <strong>Số lượng:</strong>{" "}
+            {product.stock > 0 ? `${product.stock}` : "Hết hàng"}
+          </Typography>
+
+          <Box display="flex" alignItems="center" sx={{ mb: 3 }}>
+            <IconButton onClick={handleDecrease} disabled={quantity <= 1}>
               <RemoveIcon />
             </IconButton>
             <TextField
               value={quantity}
-              onChange={(e) => setQuantity(Number(e.target.value))}
-              inputProps={{ min: 1 }}
-              sx={{ width: 60, mx: 1 }}
+              onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
+              inputProps={{ min: 1, type: "number" }}
+              sx={{ width: 80, mx: 1 }}
             />
-            <IconButton onClick={handleIncrease}>
+            <IconButton onClick={handleIncrease} disabled={product.stock <= 0}>
               <AddIcon />
             </IconButton>
           </Box>
@@ -178,11 +242,21 @@ const ProductDetail = () => {
             color="primary"
             startIcon={<ShoppingCartIcon />}
             onClick={handleAddToCart}
+            disabled={product.stock <= 0}
           >
-            Thêm vào giỏ hàng
+            {product.stock > 0 ? "Thêm vào giỏ hàng" : "Hết hàng"}
           </AddToCartButton>
         </Grid>
       </Grid>
+
+      {/* Thông báo thành công */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={1500}
+        onClose={handleSnackbarClose}
+        message="Thêm vào giỏ hàng thành công!"
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      />
     </Container>
   );
 };

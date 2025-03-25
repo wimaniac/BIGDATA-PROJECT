@@ -4,21 +4,55 @@ import bcrypt from "bcryptjs";
 import validator from "validator";
 import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
-import { authMiddleware } from "../middleware/auth.js"; // Import middleware
-
+import mongoose from "mongoose";
 const router = express.Router();
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Get all users
 router.get("/", async (req, res) => {
   try {
-    const users = await User.find();
+    const token = req.headers.authorization?.split(" ")[1];
+    if (!token) {
+      return res.status(401).json({ message: "No token provided" });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const currentUser = await User.findById(decoded.id);
+    if (!currentUser || currentUser.role !== "admin") {
+      return res.status(403).json({ message: "Bạn không có quyền truy cập!" });
+    }
+
+    const users = await User.find().select("-password"); // Không trả về mật khẩu
     res.json(users);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: "Server error!", error: err.message });
   }
 });
 
+router.get("/me", async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(" ")[1];
+    console.log("Received token:", token); // Log token nhận được
+    if (!token) return res.status(401).json({ message: "No token provided" });
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log("Decoded token:", decoded); // Log dữ liệu giải mã từ token
+    const userId = decoded.id;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: "Invalid user ID in token" });
+    }
+
+    const user = await User.findById(userId);
+    console.log("Fetched user:", user); // Log thông tin user lấy được
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json(user);
+  } catch (err) {
+    console.error("Error in /me route:", err.stack);
+    res.status(500).json({ message: "Server error!", error: err.message });
+  }
+});
 // Get user by ID
 router.get("/:id", async (req, res) => {
   try {
@@ -30,23 +64,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-router.get("/me", authMiddleware, async (req, res) => {
-  try {
-    console.log("req.user in /me:", req.user); // Debug
-    if (!req.user || !req.user.id) {
-      return res.status(400).json({ message: "User ID not found in request" });
-    }
-    if (!mongoose.Types.ObjectId.isValid(req.user.id)) {
-      return res.status(400).json({ message: "Invalid user ID format" });
-    }
-    const user = await User.findById(req.user.id).select("-password");
-    if (!user) return res.status(404).json({ message: "User not found" });
-    res.json(user);
-  } catch (error) {
-    console.error("Error fetching user info:", error.message);
-    res.status(500).json({ message: error.message });
-  }
-});
+
 // Tạo tài khoản mới (Tự động tạo admin nếu chưa có)
 router.post("/", async (req, res) => {
     try {
@@ -112,44 +130,106 @@ router.post("/", async (req, res) => {
 
 // Update user
 router.put("/:id", async (req, res) => {
-    try {
-      const { email, password, role } = req.body;
-      const { id } = req.params;
-  
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ message: "ID không hợp lệ!" });
-      }
-  
-      let updateData = { ...req.body };
-  
-      // Kiểm tra email hợp lệ
-      if (email && !validator.isEmail(email)) {
-        return res.status(400).json({ message: "Email không hợp lệ!" });
-      }
-  
-      // Chỉ admin mới có quyền cập nhật role
-      if (role && req.user.role !== "admin") {
-        return res.status(403).json({ message: "Không có quyền cập nhật role!" });
-      }
-  
-      // Nếu cập nhật mật khẩu, kiểm tra và mã hóa
-      if (password) {
-        if (!validator.isStrongPassword(password)) {
-          return res.status(400).json({ message: "Mật khẩu quá yếu!" });
-        }
-        updateData.password = await bcrypt.hash(password, 10);
-      }
-  
-      const updatedUser = await User.findByIdAndUpdate(id, updateData, { new: true });
-  
-      if (!updatedUser) return res.status(404).json({ message: "User không tồn tại!" });
-  
-      res.json(updatedUser);
-    } catch (err) {
-      res.status(500).json({ message: err.message });
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid user ID" });
     }
-  });
-  
+
+    const updatedUser = await User.findByIdAndUpdate(id, updateData, { new: true });
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json(updatedUser);
+  } catch (err) {
+    res.status(500).json({ message: "Server error!", error: err.message });
+  }
+});
+router.put("/:id/role", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+    const token = req.headers.authorization?.split(" ")[1];
+
+    if (!token) {
+      return res.status(401).json({ message: "No token provided" });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const currentUser = await User.findById(decoded.id);
+    if (!currentUser || currentUser.role !== "admin") {
+      return res.status(403).json({ message: "Bạn không có quyền thay đổi vai trò!" });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "ID người dùng không hợp lệ" });
+    }
+
+    if (!["customer", "sales", "manager", "admin"].includes(role)) {
+      return res.status(400).json({ message: "Vai trò không hợp lệ!" });
+    }
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng" });
+    }
+
+    user.role = role;
+    await user.save();
+
+    res.json({ role: user.role });
+  } catch (err) {
+    res.status(500).json({ message: "Server error!", error: err.message });
+  }
+});
+// Trong userRoutes.js
+router.put("/:id/change-password", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "ID người dùng không hợp lệ" });
+    }
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng" });
+    }
+
+    // Kiểm tra mật khẩu hiện tại (chỉ áp dụng cho tài khoản local)
+    if (user.provider === "local") {
+      const isMatch = await bcrypt.compare(currentPassword, user.password);
+      if (!isMatch) {
+        return res.status(400).json({ message: "Mật khẩu hiện tại không đúng!" });
+      }
+    } else {
+      return res.status(400).json({ message: "Tài khoản Google không thể đổi mật khẩu tại đây!" });
+    }
+
+    // Kiểm tra độ mạnh của mật khẩu mới
+    if (!validator.isStrongPassword(newPassword)) {
+      return res.status(400).json({
+        message:
+          "Mật khẩu mới quá yếu! Cần ít nhất 8 ký tự, có chữ hoa, số và ký tự đặc biệt.",
+      });
+    }
+
+    // Mã hóa mật khẩu mới và lưu
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    await user.save();
+
+    res.json({ message: "Đổi mật khẩu thành công!" });
+  } catch (err) {
+    console.error("Error in change-password route:", err);
+    res.status(500).json({ message: "Server error!", error: err.message });
+  }
+});
+
 // Delete user
 router.delete("/:id", async (req, res) => {
     try {
@@ -204,11 +284,11 @@ router.post("/auth/google-login", async (req, res) => {
       });
       res.json({ token, user });
     } else {
-      res.status(400).json({ message: "Email not verified!" });
+      res.status(400).json({ message: "Email chưa được xác minh!" });
     }
   } catch (error) {
-    console.error("Error during Google login:", error); // Log the error
-    res.status(500).json({ message: "Server error!", error: error.message });
+    console.error("Lỗi khi đăng nhập Google:", error); // Log the error
+    res.status(500).json({ message: "Lỗi máy chủ!", error: error.message });
   }
 });
 
@@ -246,26 +326,19 @@ router.post("/auth/google-register", async (req, res) => {
 // Login user
 router.post("/auth/login", async (req, res) => {
   const { email, password } = req.body;
-
   try {
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ message: "User not found!" });
+      return res.status(404).json({ message: "Không tìm thấy người dùng!" });
     }
-
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ message: "Invalid credentials!" });
+      return res.status(400).json({ message: "Thông tin đăng nhập không hợp lệ!" });
     }
-
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "1d",
-    });
-
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1d" });
     res.json({ token, user });
   } catch (error) {
-    console.error("Login error:", error); // Log the error
-    res.status(500).json({ message: "Server error!", error: error.message });
+    res.status(500).json({ message: "Lỗi máy chủ!", error: error.message });
   }
 });
 

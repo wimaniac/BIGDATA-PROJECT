@@ -7,7 +7,7 @@ import ProductDetail from "./pages/Product/ProductDetail";
 import Cart from "./pages/Cart/Cart";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
-
+import Shop from "./pages/Shop/Shop";
 function App() {
   return (
     <Router>
@@ -18,7 +18,8 @@ function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/product/:id" element={<ProductDetail />} />
         <Route path="/cart" element={<Cart />} />
-      </Routes>
+        <Route path="/shop/:categoryId?" element={<Shop />} /> 
+        </Routes>
       <Footer />
     </Router>
   );

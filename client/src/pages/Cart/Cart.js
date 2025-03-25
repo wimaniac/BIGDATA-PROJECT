@@ -1,104 +1,237 @@
 import React, { useState, useEffect } from "react";
-import { Container, Typography, Grid, Card, CardMedia, CardContent, Button, Box, IconButton, Divider } from "@mui/material";
-import { Add, Remove, Delete } from "@mui/icons-material";
+import {
+  Container,
+  Typography,
+  Grid,
+  Card,
+  CardMedia,
+  CardContent,
+  Button,
+  Box,
+  IconButton,
+  TextField,
+} from "@mui/material";
+import { styled } from "@mui/material/styles";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { Delete as DeleteIcon, Add as AddIcon, Remove as RemoveIcon } from "@mui/icons-material";
 
-const Cart = ({ userId }) => {
+// Styled components
+const CartItemCard = styled(Card)(({ theme }) => ({
+  display: "flex",
+  alignItems: "center",
+  padding: theme.spacing(2),
+  marginBottom: theme.spacing(2),
+  boxShadow: theme.shadows[2],
+}));
+
+const CheckoutButton = styled(Button)(({ theme }) => ({
+  marginTop: theme.spacing(2),
+  borderRadius: 8,
+  textTransform: "none",
+  fontWeight: "bold",
+  padding: "12px 24px",
+  fontSize: "16px",
+  backgroundColor: "#1976d2",
+  "&:hover": {
+    backgroundColor: "#1565c0",
+  },
+}));
+
+const Cart = () => {
+  const navigate = useNavigate();
   const [cart, setCart] = useState(null);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
-
+  const user = JSON.parse(localStorage.getItem("user"));
+  const userId = localStorage.getItem("userId") || (user && user._id); // Ưu tiên userId, fallback về user._id
+  console.log("userId từ localStorage:", userId);
   useEffect(() => {
-    if (userId) {
-      fetchCart();
-    } else {
-      console.error("❌ userId is undefined");
-      setLoading(false);
-    }
+    const fetchCart = async () => {
+      if (!userId) {
+        console.log("Không tìm thấy userId, yêu cầu đăng nhập.");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const response = await axios.get(`http://localhost:5000/api/cart/${userId}`);
+        setCart(response.data);
+        setLoading(false);
+      } catch (error) {
+        console.error("Lỗi lấy giỏ hàng:", error);
+        setLoading(false);
+      }
+    };
+
+    fetchCart();
   }, [userId]);
 
-  const fetchCart = async () => {
+  const handleQuantityChange = async (productId, newQuantity) => {
     try {
-      const response = await axios.get(`http://localhost:5000/api/cart/${userId}`);
-      setCart(response.data);
-      setLoading(false);
+      const response = await axios.put("http://localhost:5000/api/cart/update", {
+        userId,
+        productId,
+        quantity: Math.max(1, newQuantity),
+      });
+      setCart(response.data.cart);
     } catch (error) {
-      console.error("❌ Lỗi lấy giỏ hàng:", error);
-      setLoading(false);
+      console.error("Lỗi cập nhật số lượng:", error);
+      alert("Có lỗi xảy ra khi cập nhật số lượng!");
     }
   };
 
-  const updateQuantity = async (productId, newQuantity) => {
-    if (newQuantity < 1) return;
+  const handleRemoveItem = async (productId) => {
     try {
-      await axios.put("http://localhost:5000/api/cart/update", { userId, productId, quantity: newQuantity });
-      fetchCart();
+      const response = await axios.delete("http://localhost:5000/api/cart/remove", {
+        data: { userId, productId },
+      });
+      setCart(response.data.cart);
     } catch (error) {
-      console.error("❌ Lỗi cập nhật giỏ hàng:", error);
+      console.error("Lỗi xóa sản phẩm:", error);
+      alert("Có lỗi xảy ra khi xóa sản phẩm!");
     }
   };
 
-  const removeFromCart = async (productId) => {
-    if (!window.confirm("Bạn có chắc chắn muốn xóa sản phẩm này khỏi giỏ hàng?")) return;
+  const calculateTotal = () => {
+    if (!cart || !cart.items) return 0;
+    return cart.items.reduce(
+      (total, item) => total + item.productId.price * item.quantity,
+      0
+    );
+  };
+  const handleCheckout = async () => {
+    if (!cart || !cart.items || cart.items.length === 0) {
+      alert("Giỏ hàng trống, không thể thanh toán!");
+      return;
+    }
+
     try {
-      await axios.delete("http://localhost:5000/api/cart/remove", { data: { userId, productId } });
-      fetchCart();
+      const orderData = {
+        userId,
+        items: cart.items.map(item => ({
+          productId: item.productId._id,
+          quantity: item.quantity,
+          price: item.productId.price,
+        })),
+        total: calculateTotal(),
+        status: "pending", // Trạng thái mặc định
+      };
+
+      const response = await axios.post("http://localhost:5000/api/orders", orderData);
+      console.log("Tạo đơn hàng thành công:", response.data);
+
+      // Xóa giỏ hàng sau khi thanh toán (tùy chọn)
+      await axios.delete(`http://localhost:5000/api/cart/remove-all/${userId}`);
+      setCart(null);
+
+      alert("Thanh toán thành công! Đơn hàng của bạn đã được tạo.");
+      navigate("/orders"); // Chuyển hướng đến trang đơn hàng (nếu có)
     } catch (error) {
-      console.error("❌ Lỗi xóa sản phẩm:", error);
+      console.error("Lỗi khi thanh toán:", error);
+      if (error.response) {
+        console.log("Status:", error.response.status);
+        console.log("Data:", error.response.data);
+      }
+      alert("Có lỗi xảy ra khi thanh toán!");
     }
   };
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
+        <Typography variant="h6">Đang tải...</Typography>
+      </Box>
+    );
+  }
 
-  const getTotalPrice = () => {
-    return cart?.items?.reduce((total, item) => total + item.productId.price * item.quantity, 0);
-  };
+  if (!userId) {
+    return (
+      <Container sx={{ mt: 4 }}>
+        <Typography variant="h5" align="center">
+          Vui lòng <Link to="/login">đăng nhập</Link> để xem giỏ hàng!
+        </Typography>
+      </Container>
+    );
+  }
 
-  if (loading) return <Typography textAlign="center">Đang tải giỏ hàng...</Typography>;
+  if (!cart || !cart.items || cart.items.length === 0) {
+    return (
+      <Container sx={{ mt: 4 }}>
+        <Typography variant="h5" align="center">
+          Giỏ hàng của bạn đang trống!
+        </Typography>
+        <Box display="flex" justifyContent="center" mt={2}>
+          <Button variant="contained" color="primary" component={Link} to="/shop">
+            Tiếp tục mua sắm
+          </Button>
+        </Box>
+      </Container>
+    );
+  }
 
   return (
-    <Container sx={{ mt: 4 }}>
-      <Typography variant="h4" sx={{ fontWeight: "bold", textAlign: "center", mb: 3 }}>
-        🛒 Giỏ hàng của bạn
+    <Container sx={{ mt: 4, mb: 6 }}>
+      <Typography variant="h4" sx={{ fontWeight: "bold", mb: 3 }}>
+        Giỏ hàng
       </Typography>
 
       <Grid container spacing={3}>
-        {cart?.items?.map((item) => (
-          <Grid item xs={12} key={item.productId._id}>
-            <Card sx={{ display: "flex", alignItems: "center", p: 2, boxShadow: 3, borderRadius: 2 }}>
-              {/* Ảnh sản phẩm */}
-              <CardMedia component="img" image={item.productId.mainImage} alt={item.productId.name} sx={{ width: 100, height: 100, borderRadius: 2 }} />
-              
-              {/* Thông tin sản phẩm */}
-              <CardContent sx={{ flexGrow: 1 }}>
-                <Typography variant="h6" sx={{ fontWeight: "bold" }}>{item.productId.name}</Typography>
-                <Typography color="primary" sx={{ fontSize: "18px", fontWeight: "bold" }}>
+        <Grid item xs={12} md={8}>
+          {cart.items.map((item) => (
+            <CartItemCard key={item.productId._id}>
+              <CardMedia
+                component="img"
+                image={item.productId.mainImage || "https://via.placeholder.com/100"}
+                alt={item.productId.name}
+                sx={{ width: 100, height: 100, objectFit: "contain", mr: 2 }}
+              />
+              <CardContent sx={{ flex: 1 }}>
+                <Typography variant="h6">{item.productId.name}</Typography>
+                <Typography variant="body2" color="text.secondary">
                   {item.productId.price.toLocaleString()} VNĐ
                 </Typography>
                 <Box display="flex" alignItems="center" mt={1}>
-                  <IconButton onClick={() => updateQuantity(item.productId._id, item.quantity - 1)}><Remove /></IconButton>
-                  <Typography variant="h6" sx={{ mx: 2 }}>{item.quantity}</Typography>
-                  <IconButton onClick={() => updateQuantity(item.productId._id, item.quantity + 1)}><Add /></IconButton>
+                  <IconButton
+                    onClick={() => handleQuantityChange(item.productId._id, item.quantity - 1)}
+                    disabled={item.quantity <= 1}
+                  >
+                    <RemoveIcon />
+                  </IconButton>
+                  <TextField
+                    value={item.quantity}
+                    onChange={(e) =>
+                      handleQuantityChange(item.productId._id, Number(e.target.value))
+                    }
+                    inputProps={{ min: 1, type: "number" }}
+                    sx={{ width: 60, mx: 1 }}
+                  />
+                  <IconButton
+                    onClick={() => handleQuantityChange(item.productId._id, item.quantity + 1)}
+                  >
+                    <AddIcon />
+                  </IconButton>
                 </Box>
               </CardContent>
-
-              {/* Nút xóa */}
-              <IconButton onClick={() => removeFromCart(item.productId._id)} color="error">
-                <Delete />
+              <IconButton onClick={() => handleRemoveItem(item.productId._id)}>
+                <DeleteIcon color="error" />
               </IconButton>
-            </Card>
-          </Grid>
-        ))}
+            </CartItemCard>
+          ))}
+        </Grid>
+
+        <Grid item xs={12} md={4}>
+          <Card sx={{ p: 2, boxShadow: 3 }}>
+            <Typography variant="h6" sx={{ fontWeight: "bold", mb: 2 }}>
+              Tổng cộng
+            </Typography>
+            <Typography variant="h5" color="primary" sx={{ mb: 2 }}>
+              {calculateTotal().toLocaleString()} VNĐ
+            </Typography>
+            <CheckoutButton variant="contained" color="primary" fullWidth>
+              Thanh toán
+            </CheckoutButton>
+          </Card>
+        </Grid>
       </Grid>
-
-      <Divider sx={{ my: 3 }} />
-
-      {/* Tổng tiền và nút thanh toán */}
-      <Box display="flex" justifyContent="space-between" alignItems="center">
-        <Typography variant="h5" sx={{ fontWeight: "bold" }}>Tổng tiền: {getTotalPrice()?.toLocaleString()} VNĐ</Typography>
-        <Button variant="contained" color="primary" size="large" onClick={() => navigate("/checkout")}>
-          Tiến hành thanh toán
-        </Button>
-      </Box>
     </Container>
   );
 };

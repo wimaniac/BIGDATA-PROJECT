@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Drawer,
@@ -21,17 +21,55 @@ import {
   Storage,
   Menu as MenuIcon,
   ChevronLeft,
-  AccountCircle, // Thêm icon user
+  AccountCircle,
 } from "@mui/icons-material";
+import axios from "axios";
 
 const Sidebar = ({ children }) => {
   const navigate = useNavigate();
   const [open, setOpen] = useState(true);
-  const [anchorEl, setAnchorEl] = useState(null); // State cho menu dropdown
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [user, setUser] = useState(null);
 
-  // Lấy thông tin user từ localStorage
-  const user = JSON.parse(localStorage.getItem("user")) || {};
-  const userRole = user.role || "Không xác định"; // Vai trò của user
+  useEffect(() => {
+    const fetchUser = async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tokenFromUrl = urlParams.get("token");
+
+      if (tokenFromUrl) {
+        localStorage.setItem("token", tokenFromUrl);
+        console.log("Token saved from URL:", tokenFromUrl);
+      }
+
+      const token = localStorage.getItem("token");
+      console.log("Token from localStorage or URL:", token);
+
+      if (token) {
+        console.log("Sending request with token:", token);
+        try {
+          const response = await axios.get("http://localhost:5000/api/users/me", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          console.log("User from API:", response.data);
+          setUser(response.data);
+          localStorage.setItem("user", JSON.stringify(response.data));
+        } catch (error) {
+          console.error("Error fetching user:", error.message);
+          console.error("Error details:", error.response?.data || error);
+          if (error.response?.status === 401 || error.response?.status === 404) {
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+            window.location.href = "http://localhost:3000/login";
+          }
+        }
+      } else {
+        console.log("No token found, redirecting to login");
+        window.location.href = "http://localhost:3000/login";
+      }
+    };
+
+    fetchUser();
+  }, []);
 
   const toggleSidebar = () => {
     setOpen(!open);
@@ -41,27 +79,43 @@ const Sidebar = ({ children }) => {
     navigate(path);
   };
 
-  // Mở menu dropdown khi click vào icon user
   const handleUserMenuOpen = (event) => {
     setAnchorEl(event.currentTarget);
   };
 
-  // Đóng menu dropdown
   const handleUserMenuClose = () => {
     setAnchorEl(null);
   };
 
-  // Xử lý đăng xuất
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
-    navigate("/login"); // Chuyển hướng về trang đăng nhập (có thể cần thay đổi đường dẫn)
+    window.location.href = "http://localhost:3000/login"; // Sửa lỗi navigate
     handleUserMenuClose();
+  };
+
+  const getRoleTitle = () => {
+    console.log("Current user in getRoleTitle:", user);
+    if (!user) {
+      console.log("No user found, returning default title");
+      return "Dashboard";
+    }
+    console.log("User role:", user.role);
+    switch (user.role) {
+      case "admin":
+        return "Bảng điều khiển của Admin ";
+      case "manager":
+        return "Bảng điều khiển của quản lý";
+      case "sales":
+        return "Bảng điều khiển của nhân viên bán hàng";
+      default:
+        console.log("Role not matched, returning default title");
+        return "Dashboard";
+    }
   };
 
   return (
     <div style={{ display: "flex" }}>
-      {/* Nút toggle sidebar */}
       <IconButton
         onClick={toggleSidebar}
         style={{
@@ -80,7 +134,6 @@ const Sidebar = ({ children }) => {
         {open ? <ChevronLeft /> : <MenuIcon />}
       </IconButton>
 
-      {/* Sidebar */}
       <Drawer
         variant="permanent"
         open={open}
@@ -97,11 +150,10 @@ const Sidebar = ({ children }) => {
             overflowX: "hidden",
             display: "flex",
             flexDirection: "column",
-            justifyContent: "space-between", // Đẩy nội dung xuống dưới
+            justifyContent: "space-between",
           },
         }}
       >
-        {/* Phần trên: Tiêu đề và Menu */}
         <div>
           <div
             style={{
@@ -111,27 +163,25 @@ const Sidebar = ({ children }) => {
             }}
           >
             {open && (
-              <Typography variant="h6">
-                <h2>Dashboard - {userRole}</h2>
+              <Typography variant="h6" component="h1">
+                {getRoleTitle()}
               </Typography>
             )}
           </div>
 
           <Divider style={{ background: "#BDC3C7" }} />
 
-          {/* Danh sách menu */}
           <List>
             {[
               { text: "Sản phẩm", icon: <Category />, path: "/manage-products" },
               { text: "Danh mục", icon: <Category />, path: "/manage-categories" },
               { text: "Nhà cung cấp", icon: <LocalShipping />, path: "/manage-suppliers" },
-              { text: "Người dùng", icon: <People />, path: "/manage-users" },
+              { text: "Người dùng", icon: <People />, path: "/user-management" }, // Giữ nguyên để điều hướng
               { text: "Đơn hàng", icon: <ShoppingCart />, path: "/manage-orders" },
               { text: "Giảm giá", icon: <LocalOffer />, path: "/manage-discounts" },
               { text: "Kho hàng", icon: <Storage />, path: "/manage-inventory" },
             ].map(({ text, icon, path }) => (
               <ListItem
-                button
                 key={text}
                 onClick={() => handleNavigation(path)}
                 style={{
@@ -151,17 +201,19 @@ const Sidebar = ({ children }) => {
           </List>
         </div>
 
-        {/* Phần dưới: Icon user */}
         <div style={{ padding: open ? "16px" : "16px 8px" }}>
           <IconButton
             onClick={handleUserMenuOpen}
-            style={{ color: "#ECF0F1", width: "100%", justifyContent: open ? "flex-start" : "center" }}
+            style={{ color: "#ECF0F1" }}
           >
             <AccountCircle />
-            {open && <Typography style={{ marginLeft: 10 }}>{user.name || "User"}</Typography>}
+            {open && user && (
+              <Typography variant="body2" style={{ marginLeft: 8 }}>
+                {user.name}
+              </Typography>
+            )}
           </IconButton>
 
-          {/* Menu dropdown */}
           <Menu
             anchorEl={anchorEl}
             open={Boolean(anchorEl)}
@@ -173,25 +225,19 @@ const Sidebar = ({ children }) => {
               },
             }}
           >
-            {/* Quản lý người dùng (chỉ hiển thị nếu là admin) */}
-            {userRole === "admin" && (
-              <MenuItem onClick={() => { handleNavigation("/manage-users"); handleUserMenuClose(); }}>
-                Quản lý người dùng
-              </MenuItem>
-            )}
-            {/* Thông tin tài khoản */}
-            <MenuItem onClick={() => { handleNavigation("/account-info"); handleUserMenuClose(); }}>
+            <MenuItem
+              onClick={() => {
+                handleNavigation("/account-info");
+                handleUserMenuClose();
+              }}
+            >
               Thông tin tài khoản
             </MenuItem>
-            {/* Đăng xuất */}
-            <MenuItem onClick={handleLogout}>
-              Đăng xuất
-            </MenuItem>
+            <MenuItem onClick={handleLogout}>Đăng xuất</MenuItem>
           </Menu>
         </div>
       </Drawer>
 
-      {/* Main content */}
       <main
         style={{
           flexGrow: 1,

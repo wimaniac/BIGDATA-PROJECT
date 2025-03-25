@@ -1,13 +1,27 @@
 import React, { useState, useEffect } from "react";
-import { AppBar, Toolbar, IconButton, Badge, Menu, MenuItem, Box, Button, InputBase, Container, Divider, Tooltip, Avatar } from "@mui/material";
+import {
+  AppBar,
+  Toolbar,
+  IconButton,
+  Badge,
+  Menu,
+  MenuItem,
+  Box,
+  Button,
+  InputBase,
+  Container,
+  Divider,
+  Tooltip,
+  Avatar,
+} from "@mui/material";
 import { styled, alpha } from "@mui/material/styles";
-import { 
-  Search as SearchIcon, 
-  ShoppingCart as ShoppingCartIcon, 
-  AccountCircle as AccountCircleIcon, 
+import {
+  Search as SearchIcon,
+  ShoppingCart as ShoppingCartIcon,
+  AccountCircle as AccountCircleIcon,
   Menu as MenuIcon,
   KeyboardArrowRight as KeyboardArrowRightIcon,
-  Favorite as FavoriteIcon
+  Favorite as FavoriteIcon,
 } from "@mui/icons-material";
 import axios from "axios";
 import { Link } from "react-router-dom";
@@ -23,7 +37,6 @@ const StyledAppBar = styled(AppBar)(({ theme }) => ({
   zIndex: theme.zIndex.drawer + 1,
 }));
 
-// Style thanh tìm kiếm cải tiến
 const SearchBox = styled("div")(({ theme }) => ({
   position: "relative",
   borderRadius: theme.shape.borderRadius,
@@ -77,7 +90,6 @@ const StyledInputBase = styled(InputBase)(({ theme }) => ({
   },
 }));
 
-// Style cho nút danh mục
 const CategoryButton = styled(Button)(({ theme }) => ({
   textTransform: "none",
   fontWeight: 600,
@@ -97,7 +109,6 @@ const CategoryButton = styled(Button)(({ theme }) => ({
   },
 }));
 
-// Style cho IconButton
 const StyledIconButton = styled(IconButton)(({ theme }) => ({
   color: theme.palette.text.primary,
   margin: theme.spacing(0, 1),
@@ -109,7 +120,6 @@ const StyledIconButton = styled(IconButton)(({ theme }) => ({
   },
 }));
 
-// Style cho menu items
 const StyledMenuItem = styled(MenuItem)(({ theme }) => ({
   padding: theme.spacing(1.5, 2.5),
   "&:hover": {
@@ -125,41 +135,63 @@ const Header = () => {
   const [currentParentId, setCurrentParentId] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
-  const [user, setUser] = useState(null); // Add user state
-  const [anchorUserEl, setAnchorUserEl] = useState(null); // Add anchor for user menu
+  const [user, setUser] = useState(null);
+  const [anchorUserEl, setAnchorUserEl] = useState(null);
 
   useEffect(() => {
-    const fetchUser = () => {
+    const fetchUser = async () => {
       const userData = JSON.parse(localStorage.getItem("user"));
-      setUser(userData || null);
+      const token = localStorage.getItem("token");
+
+      if (token) {
+        try {
+          const response = await axios.get("http://localhost:5000/api/users/me", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          setUser(response.data);
+          localStorage.setItem("user", JSON.stringify(response.data));
+        } catch (error) {
+          console.error("Token invalid or expired:", error);
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          setUser(null);
+        }
+      } else {
+        setUser(userData || null);
+      }
     };
-  
-    fetchUser(); // Load user khi component mount
-  
-    // Lắng nghe sự kiện cập nhật user sau khi đăng nhập
+
+    const fetchCategories = async () => {
+      try {
+        const response = await axios.get("http://localhost:5000/api/categories/parents");
+        console.log("Parent categories:", response.data);
+        setParentCategories(response.data);
+      } catch (error) {
+        console.error("Error fetching parent categories:", error);
+      }
+    };
+
+    fetchUser();
+    fetchCategories();
+
+    window.addEventListener("storage", fetchUser);
     window.addEventListener("userUpdated", fetchUser);
-  
+
     return () => {
+      window.removeEventListener("storage", fetchUser);
       window.removeEventListener("userUpdated", fetchUser);
     };
   }, []);
-  
-
-  const fetchParentCategories = async () => {
-    try {
-      const response = await axios.get("http://localhost:5000/api/categories/parents");
-      setParentCategories(response.data);
-    } catch (error) {
-      console.error("Lỗi lấy danh mục cha:", error);
-    }
-  };
 
   const fetchChildCategories = async (parentId) => {
     try {
-      const response = await axios.get(`http://localhost:5000/api/categories/subcategories/${parentId}`);
+      const response = await axios.get(
+        `http://localhost:5000/api/categories/subcategories/${parentId}`
+      );
+      console.log(`Child categories for ${parentId}:`, response.data);
       setChildCategories((prev) => ({ ...prev, [parentId]: response.data }));
     } catch (error) {
-      console.error("Lỗi lấy danh mục con:", error);
+      console.error("Error fetching child categories:", error);
     }
   };
 
@@ -173,11 +205,11 @@ const Header = () => {
     setCurrentParentId(null);
   };
 
-  const handleParentHover = async (event, parentId) => {
+  const handleParentClick = async (event, parentId) => {
     setCurrentParentId(parentId);
     setChildAnchorEl(event.currentTarget);
     if (!childCategories[parentId]) {
-      fetchChildCategories(parentId);
+      await fetchChildCategories(parentId);
     }
   };
 
@@ -191,9 +223,8 @@ const Header = () => {
   };
 
   const handleSearch = (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       console.log("Tìm kiếm:", searchValue);
-      // Thêm logic tìm kiếm ở đây
     }
   };
 
@@ -206,8 +237,8 @@ const Header = () => {
   };
 
   const handleLogout = () => {
-    // Clear user data and redirect to login
     localStorage.removeItem("user");
+    localStorage.removeItem("token");
     setUser(null);
     handleUserMenuClose();
     window.location.href = "/login";
@@ -216,37 +247,35 @@ const Header = () => {
   return (
     <StyledAppBar>
       <Container maxWidth="xl">
-        <Toolbar 
-          sx={{ 
-            flexWrap: { xs: 'wrap', sm: 'nowrap' },
+        <Toolbar
+          sx={{
+            flexWrap: { xs: "wrap", sm: "nowrap" },
             py: { xs: 1.5, md: 1 },
-            px: { xs: 2, md: 3},
+            px: { xs: 2, md: 3 },
             gap: { sm: 2, md: 3 },
-            justifyContent: "space-between"
+            justifyContent: "space-between",
           }}
         >
-          {/* Logo và nút menu mobile */}
-          <Box sx={{ 
-            display: "flex", 
-            alignItems: "center", 
-            justifyContent: { xs: "space-between", sm: "flex-start" },
-            width: { xs: "100%", sm: "auto" },
-            mr: { sm: 2 }
-          }}>
-            <Link to="/" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
-              <img 
-                src={logo} 
-                alt="Logo" 
-                style={{ 
-                  height: 45, 
-                  width: "auto", 
-                  cursor: "pointer"
-                }} 
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: { xs: "space-between", sm: "flex-start" },
+              width: { xs: "100%", sm: "auto" },
+              mr: { sm: 2 },
+            }}
+          >
+            <Link
+              to="/"
+              style={{ display: "flex", alignItems: "center", textDecoration: "none" }}
+            >
+              <img
+                src={logo}
+                alt="Logo"
+                style={{ height: 45, width: "auto", cursor: "pointer" }}
               />
             </Link>
-            
-            {/* Mobile menu icon */}
-            <IconButton 
+            <IconButton
               sx={{ display: { sm: "none" } }}
               onClick={handleMobileMenuToggle}
             >
@@ -254,29 +283,27 @@ const Header = () => {
             </IconButton>
           </Box>
 
-          {/* Danh mục desktop */}
-          <Box sx={{ 
-            display: { xs: mobileMenuOpen ? "flex" : "none", sm: "flex" },
-            flexDirection: { xs: "column", sm: "row" },
-            alignItems: "center",
-            width: { xs: "100%", sm: "auto" },
-            order: { xs: 2, sm: 1 },
-            mt: { xs: 1.5, sm: 0 },
-            mb: { xs: 1, sm: 0 }
-          }}>
-            <CategoryButton 
+          <Box
+            sx={{
+              display: { xs: mobileMenuOpen ? "flex" : "none", sm: "flex" },
+              flexDirection: { xs: "column", sm: "row" },
+              alignItems: "center",
+              width: { xs: "100%", sm: "auto" },
+              order: { xs: 2, sm: 1 },
+              mt: { xs: 1.5, sm: 0 },
+              mb: { xs: 1, sm: 0 },
+            }}
+          >
+            <CategoryButton
               onClick={handleMenuOpen}
               startIcon={<MenuIcon sx={{ mr: 0.5 }} />}
             >
               Danh mục
             </CategoryButton>
-
-            {/* Menu danh mục cha */}
             <Menu
               anchorEl={anchorEl}
               open={Boolean(anchorEl)}
               onClose={handleMenuClose}
-              MenuListProps={{ onMouseLeave: handleMenuClose }}
               PaperProps={{
                 elevation: 3,
                 sx: {
@@ -296,127 +323,134 @@ const Header = () => {
                     bgcolor: "background.paper",
                     transform: "translateY(-50%) rotate(45deg)",
                     zIndex: 0,
-                  }
-                }
+                  },
+                },
               }}
             >
-              {parentCategories.map((parent) => (
-                <StyledMenuItem
-                  key={parent._id}
-                  onMouseEnter={(e) => handleParentHover(e, parent._id)}
-                  sx={{
-                    fontWeight: 500,
-                    display: "flex",
-                    justifyContent: "space-between"
-                  }}
-                >
-                  {parent.name}
-                  <KeyboardArrowRightIcon fontSize="small" sx={{ opacity: 0.6, ml: 1 }} />
-                </StyledMenuItem>
-              ))}
+              {parentCategories.length > 0 ? (
+                parentCategories.map((parent) => (
+                  <StyledMenuItem
+                    key={parent._id}
+                    onClick={(e) => handleParentClick(e, parent._id)}
+                    component={Link}
+                    to={`/shop/${parent._id}`}
+                    sx={{
+                      fontWeight: 500,
+                      display: "flex",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    {parent.name}
+                    <KeyboardArrowRightIcon
+                      fontSize="small"
+                      sx={{ opacity: 0.6, ml: 1 }}
+                    />
+                  </StyledMenuItem>
+                ))
+              ) : (
+                <MenuItem disabled>Không có danh mục</MenuItem>
+              )}
             </Menu>
-
-            {/* Menu danh mục con */}
             <Menu
               anchorEl={childAnchorEl}
               open={Boolean(childAnchorEl)}
               onClose={handleChildMenuClose}
               anchorOrigin={{ vertical: "top", horizontal: "right" }}
               transformOrigin={{ vertical: "top", horizontal: "left" }}
-              MenuListProps={{ onMouseLeave: handleChildMenuClose }}
               PaperProps={{
                 elevation: 3,
                 sx: {
-                  width: 250,
+                  width: 300,
                   maxHeight: 350,
                   overflowY: "auto",
                   borderRadius: 1,
                   ml: 1.5,
                   filter: "drop-shadow(0px 2px 8px rgba(0,0,0,0.15))",
-                }
+                },
               }}
             >
               {childCategories[currentParentId]?.length > 0 ? (
                 childCategories[currentParentId].map((child) => (
-                  <StyledMenuItem 
-                    key={child._id} 
+                  <StyledMenuItem
+                    key={child._id}
                     component={Link}
-                    to={`/category/${child._id}`}
+                    to={`/shop/${child._id}`}
                     onClick={handleChildMenuClose}
                   >
                     {child.name}
                   </StyledMenuItem>
                 ))
               ) : (
-                <MenuItem disabled sx={{ p: 1.5 }}>Không có danh mục con</MenuItem>
+                <MenuItem disabled sx={{ p: 1.5 }}>
+                  Không có danh mục con
+                </MenuItem>
               )}
             </Menu>
           </Box>
 
-          {/* Thanh tìm kiếm */}
-          <SearchBox sx={{ 
-            order: { xs: 3, sm: 2 },
-            width: { xs: "100%", sm: "auto" },
-          }}>
+          <SearchBox
+            sx={{
+              order: { xs: 3, sm: 2 },
+              width: { xs: "100%", sm: "auto" },
+            }}
+          >
             <SearchIconWrapper>
               <SearchIcon />
             </SearchIconWrapper>
-            <StyledInputBase 
-              placeholder="Tìm kiếm sản phẩm..." 
+            <StyledInputBase
+              placeholder="Tìm kiếm sản phẩm..."
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               onKeyDown={handleSearch}
-              sx={{ 
-                height: "42px", 
-                fontSize: "15px" 
-              }}  
+              sx={{ height: "42px", fontSize: "15px" }}
             />
           </SearchBox>
 
-          {/* Biểu tượng user actions */}
-          <Box sx={{ 
-            display: "flex", 
-            alignItems: "center",
-            order: { xs: 1, sm: 3 },
-            ml: { sm: 2, md: 3 },
-            gap: { xs: 0.5, sm: 1, md: 2 }
-          }}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              order: { xs: 1, sm: 3 },
+              ml: { sm: 2, md: 3 },
+              gap: { xs: 0.5, sm: 1, md: 2 },
+            }}
+          >
             <Tooltip title="Sản phẩm yêu thích">
               <StyledIconButton>
-                <Badge 
-                  badgeContent={0} 
-                  color="error" 
-                  sx={{ 
-                    "& .MuiBadge-badge": { 
+                <Badge
+                  badgeContent={0}
+                  color="error"
+                  sx={{
+                    "& .MuiBadge-badge": {
                       fontSize: 10,
                       height: 18,
-                      minWidth: 18
-                    }
+                      minWidth: 18,
+                    },
                   }}
                 >
                   <FavoriteIcon sx={{ fontSize: 24 }} />
                 </Badge>
               </StyledIconButton>
             </Tooltip>
-            
+
             <Tooltip title="Giỏ hàng">
               <StyledIconButton component={Link} to="/cart">
-                <Badge 
-                  badgeContent={0} 
+                <Badge
+                  badgeContent={0}
                   color="error"
-                  sx={{ 
-                    "& .MuiBadge-badge": { 
+                  sx={{
+                    "& .MuiBadge-badge": {
                       fontSize: 10,
                       height: 18,
-                      minWidth: 18
-                    }
+                      minWidth: 18,
+                    },
                   }}
                 >
                   <ShoppingCartIcon sx={{ fontSize: 24 }} />
                 </Badge>
               </StyledIconButton>
             </Tooltip>
-            
+
             {user ? (
               <>
                 <Tooltip title={user.email}>
@@ -433,7 +467,9 @@ const Header = () => {
                   open={Boolean(anchorUserEl)}
                   onClose={handleUserMenuClose}
                 >
-                  <MenuItem component={Link} to="/account">Thông tin tài khoản</MenuItem>
+                  <MenuItem component={Link} to="/account">
+                    Thông tin tài khoản
+                  </MenuItem>
                   <MenuItem onClick={handleLogout}>Đăng xuất</MenuItem>
                 </Menu>
               </>
@@ -449,27 +485,30 @@ const Header = () => {
                   open={Boolean(anchorUserEl)}
                   onClose={handleUserMenuClose}
                 >
-                  <MenuItem component={Link} to="/login">Đăng nhập</MenuItem>
+                  <MenuItem component={Link} to="/login">
+                    Đăng nhập
+                  </MenuItem>
                 </Menu>
               </>
             )}
           </Box>
         </Toolbar>
       </Container>
-      
-      {/* Mobile menu items */}
+
       <Divider sx={{ display: { sm: "none" } }} />
       {mobileMenuOpen && (
-        <Box sx={{ 
-          display: { xs: "flex", sm: "none" },
-          flexDirection: "column", 
-          p: 2,
-          bgcolor: "background.paper"
-        }}>
-          <Button 
-            component={Link} 
+        <Box
+          sx={{
+            display: { xs: "flex", sm: "none" },
+            flexDirection: "column",
+            p: 2,
+            bgcolor: "background.paper",
+          }}
+        >
+          <Button
+            component={Link}
             to="/account"
-            sx={{ 
+            sx={{
               justifyContent: "flex-start",
               py: 1.5,
               textTransform: "none",
