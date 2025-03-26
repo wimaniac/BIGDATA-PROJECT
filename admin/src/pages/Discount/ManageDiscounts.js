@@ -47,11 +47,29 @@ const ManageDiscounts = () => {
     endDate: "",
     isActive: true,
   });
-
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
   useEffect(() => {
     fetchDiscounts();
-  }, []);
-
+    fetchProducts();
+    fetchCategories();  }, []);
+    const fetchProducts = async () => {
+      try {
+        const response = await axios.get("http://localhost:5000/api/products");
+        setProducts(response.data);
+      } catch (error) {
+        console.error("Lỗi khi lấy danh sách sản phẩm:", error);
+      }
+    };
+    
+    const fetchCategories = async () => {
+      try {
+        const response = await axios.get("http://localhost:5000/api/categories");
+        setCategories(response.data);
+      } catch (error) {
+        console.error("Lỗi khi lấy danh sách danh mục:", error);
+      }
+    };
   const fetchDiscounts = async () => {
     try {
       const response = await axios.get("http://localhost:5000/api/discounts", {
@@ -107,9 +125,11 @@ const ManageDiscounts = () => {
     try {
       const discountData = {
         ...currentDiscount,
-        maxDiscount: currentDiscount.maxDiscount ? parseFloat(currentDiscount.maxDiscount) : null,
-        discountValue: parseFloat(currentDiscount.discountValue),
-        minPurchase: parseFloat(currentDiscount.minPurchase),
+      maxDiscount: currentDiscount.maxDiscount ? parseFloat(currentDiscount.maxDiscount) : null,
+      discountValue: parseFloat(currentDiscount.discountValue),
+      minPurchase: parseFloat(currentDiscount.minPurchase),
+      applicableProducts: currentDiscount.applicableProducts || [],
+      applicableCategories: currentDiscount.applicableCategories || [],
       };
 
       if (editMode) {
@@ -265,7 +285,60 @@ const ManageDiscounts = () => {
               margin="normal"
             />
           )}
-          <TextField
+         <FormControl fullWidth margin="normal">
+    <InputLabel>Sản phẩm áp dụng</InputLabel>
+    <Select
+      multiple
+      name="applicableProducts"
+      value={currentDiscount.applicableProducts}
+      onChange={(e) =>
+        setCurrentDiscount((prev) => ({
+          ...prev,
+          applicableProducts: e.target.value,
+        }))
+      }
+      renderValue={(selected) =>
+        products
+          .filter((p) => selected.includes(p._id))
+          .map((p) => p.name)
+          .join(", ")
+      }
+    >
+      {products.map((product) => (
+        <MenuItem key={product._id} value={product._id}>
+          {product.name}
+        </MenuItem>
+      ))}
+    </Select>
+  </FormControl>
+
+  {/* Chọn danh mục áp dụng */}
+  <FormControl fullWidth margin="normal">
+    <InputLabel>Danh mục áp dụng</InputLabel>
+    <Select
+      multiple
+      name="applicableCategories"
+      value={currentDiscount.applicableCategories}
+      onChange={(e) =>
+        setCurrentDiscount((prev) => ({
+          ...prev,
+          applicableCategories: e.target.value,
+        }))
+      }
+      renderValue={(selected) =>
+        categories
+          .filter((c) => selected.includes(c._id))
+          .map((c) => c.name)
+          .join(", ")
+      }
+    >
+      {categories.map((category) => (
+        <MenuItem key={category._id} value={category._id}>
+          {category.name}
+        </MenuItem>
+      ))}
+    </Select>
+  </FormControl> <TextField
             label="Ngày bắt đầu"
             name="startDate"
             type="date"
