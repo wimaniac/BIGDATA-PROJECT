@@ -146,9 +146,12 @@ const Header = () => {
 
       if (token) {
         try {
-          const response = await axios.get("http://localhost:5000/api/users/me", {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          const response = await axios.get(
+            "http://localhost:5000/api/users/me",
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
           setUser(response.data);
           localStorage.setItem("user", JSON.stringify(response.data));
         } catch (error) {
@@ -164,7 +167,9 @@ const Header = () => {
 
     const fetchCategories = async () => {
       try {
-        const response = await axios.get("http://localhost:5000/api/categories/parents");
+        const response = await axios.get(
+          "http://localhost:5000/api/categories/parents"
+        );
         setParentCategories(response.data);
       } catch (error) {
         console.error("Error fetching parent categories:", error);
@@ -176,11 +181,17 @@ const Header = () => {
       const token = localStorage.getItem("token");
       if (userId && token) {
         try {
-          const response = await axios.get(`http://localhost:5000/api/cart/${userId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          const response = await axios.get(
+            `http://localhost:5000/api/cart/${userId}`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
           const cartItems = response.data?.items || [];
-          const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+          const totalItems = cartItems.reduce(
+            (sum, item) => sum + item.quantity,
+            0
+          );
           setCartCount(totalItems);
         } catch (error) {
           console.error("Error fetching cart count:", error);
@@ -195,7 +206,7 @@ const Header = () => {
 
     window.addEventListener("storage", fetchUser);
     window.addEventListener("userUpdated", fetchUser);
-    window.addEventListener("cartUpdated", fetchCartCount); 
+    window.addEventListener("cartUpdated", fetchCartCount);
 
     return () => {
       window.removeEventListener("storage", fetchUser);
@@ -288,7 +299,11 @@ const Header = () => {
           >
             <Link
               to="/"
-              style={{ display: "flex", alignItems: "center", textDecoration: "none" }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                textDecoration: "none",
+              }}
             >
               <img
                 src={logo}
@@ -491,9 +506,13 @@ const Header = () => {
                   <MenuItem component={Link} to="/account">
                     Thông tin tài khoản
                   </MenuItem>
-                  <MenuItem component={Link} to="/orders" onClick={handleUserMenuClose}>
+                  <MenuItem
+                    component={Link}
+                    to="/orders"
+                    onClick={handleUserMenuClose}
+                  >
                     Đơn hàng
-                  </MenuItem> {/* Thêm mục Đơn hàng */}
+                  </MenuItem>
                   <MenuItem onClick={handleLogout}>Đăng xuất</MenuItem>
                 </Menu>
               </>

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom"; // Thêm Link để liên kết đến trang login
+import { useNavigate, Link } from "react-router-dom";
 import {
   Container,
   Paper,
@@ -10,13 +10,13 @@ import {
   Divider,
   Alert,
 } from "@mui/material";
-import { styled } from "@mui/material/styles";
+import { styled } from "@mui/material/styles"; // Thêm import styled
 import axios from "axios";
 import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
-// Styled components cho trang đăng ký
+// Định nghĩa các styled components
 const RegisterContainer = styled(Container)(({ theme }) => ({
   height: "100vh",
   display: "flex",
@@ -67,10 +67,18 @@ const Register = () => {
 
     try {
       const response = await axios.post("http://localhost:5000/api/users", formData);
-      localStorage.setItem("user", JSON.stringify(response.data.user));
-      toast.success("Đăng ký thành công!");
+      const { user, token } = response.data;
+
+      localStorage.setItem("user", JSON.stringify(user));
+      localStorage.setItem("token", token);
+      localStorage.setItem("userId", user._id);
+
+      // Dispatch sự kiện để thông báo Header cập nhật (nếu vẫn cần)
+      window.dispatchEvent(new Event("userUpdated"));
+
+      toast.success("Đăng ký thành công! Vui lòng đăng nhập.");
       setTimeout(() => {
-        window.location.href = "/";
+        navigate("/login"); // Chuyển hướng về trang đăng nhập
       }, 2000);
     } catch (error) {
       setError(error.response?.data?.message || "Đăng ký thất bại!");
@@ -79,13 +87,21 @@ const Register = () => {
 
   const handleGoogleRegister = async (response) => {
     try {
-      const res = await axios.post("http://localhost:5000/api/auth/google-register", {
+      const res = await axios.post("http://localhost:5000/api/users/auth/google-register", {
         tokenId: response.credential,
       });
-      localStorage.setItem("user", JSON.stringify(res.data.user));
-      toast.success("Đăng ký thành công!");
+      const { user, token } = res.data;
+
+      localStorage.setItem("user", JSON.stringify(user));
+      localStorage.setItem("token", token);
+      localStorage.setItem("userId", user._id);
+
+      // Dispatch sự kiện để thông báo Header cập nhật (nếu vẫn cần)
+      window.dispatchEvent(new Event("userUpdated"));
+
+      toast.success("Đăng ký thành công! Vui lòng đăng nhập.");
       setTimeout(() => {
-        window.location.href = "/";
+        navigate("/login"); // Chuyển hướng về trang đăng nhập
       }, 2000);
     } catch (error) {
       setError(error.response?.data?.message || "Đăng ký bằng Google thất bại!");

@@ -74,7 +74,7 @@ const Cart = () => {
                   ...item.productId,
                   originalPrice: discountResponse.data.originalPrice ?? item.productId.price,
                   discountedPrice: discountResponse.data.discountedPrice ?? item.productId.price,
-                  stock: item.productId.stock, // Đảm bảo stock được giữ lại
+                  stock: item.productId.stock,
                 },
               };
             } catch (error) {
@@ -107,7 +107,6 @@ const Cart = () => {
   const handleQuantityChange = async (productId, newQuantity) => {
     const clampedQuantity = Math.max(1, newQuantity);
 
-    // Kiểm tra stock trước khi cập nhật
     const productInCart = cart?.items.find((item) => item.productId._id === productId);
     if (!productInCart) return;
 
@@ -117,7 +116,6 @@ const Cart = () => {
       return;
     }
 
-    // Cập nhật tạm thời trước khi gọi API
     setCart((prevCart) => {
       if (!prevCart || !prevCart.items) return prevCart;
       const updatedItems = prevCart.items.map((item) =>
@@ -139,7 +137,6 @@ const Cart = () => {
       );
       const updatedCartFromServer = response.data.cart || null;
 
-      // Hợp nhất dữ liệu từ server với dữ liệu cục bộ
       setCart((prevCart) => {
         if (!prevCart || !updatedCartFromServer) return updatedCartFromServer;
         const mergedItems = updatedCartFromServer.items.map((serverItem) => {
@@ -188,16 +185,12 @@ const Cart = () => {
       return { ...prevCart, items: updatedItems };
     });
     setSelectedItems((prev) => prev.filter((id) => id !== productId));
-
+  
     try {
-      const response = await axios.put(
-        "http://localhost:5000/api/cart/update",
-        {
-          userId,
-          productId,
-          quantity: 0,
-        }
-      );
+      // Sử dụng DELETE thay vì PUT để xóa sản phẩm
+      const response = await axios.delete("http://localhost:5000/api/cart/remove", {
+        data: { userId, productId }, // Gửi dữ liệu trong body của DELETE
+      });
       const updatedCart = response.data.cart || null;
       setCart(updatedCart);
       const totalItems = updatedCart?.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
@@ -225,62 +218,18 @@ const Cart = () => {
         0
       );
   };
-  const handleCheckout = async () => {
+
+  const handleCheckout = () => {
     if (selectedItems.length === 0) {
       alert("Vui lòng chọn ít nhất một sản phẩm để thanh toán!");
       return;
     }
-  
-    try {
-      const selectedCartItems = cart.items.filter((item) =>
-        selectedItems.includes(item.productId._id)
-      );
-  
-      const orderData = {
-        userId,
-        items: selectedCartItems.map((item) => ({
-          productId: item.productId._id,
-          quantity: item.quantity,
-          price: item.productId.discountedPrice || item.productId.price,
-        })),
-        total: calculateTotal(),
-        status: "pending",
-        // Nếu backend yêu cầu thêm trường, ví dụ:
-        // shippingAddress: "123 Đường ABC, Quận XYZ", 
-      };
-  
-      console.log("Order data gửi lên:", orderData);
-  
-      const response = await axios.post("http://localhost:5000/api/orders", orderData);
-      console.log("Tạo đơn hàng thành công:", response.data);
-  
-      // Xóa sản phẩm khỏi giỏ hàng
-      await Promise.all(
-        selectedCartItems.map((item) =>
-          axios.put("http://localhost:5000/api/cart/update", {
-            userId,
-            productId: item.productId._id,
-            quantity: 0,
-          })
-        )
-      );
-  
-      const updatedCart = {
-        ...cart,
-        items: cart.items.filter((item) => !selectedItems.includes(item.productId._id)),
-      };
-      setCart(updatedCart);
-      setSelectedItems([]);
-      const totalItems = updatedCart.items.reduce((sum, item) => sum + item.quantity, 0) || 0;
-      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: { cartCount: totalItems } }));
-  
-      alert("Thanh toán thành công! Đơn hàng của bạn đã được tạo.");
-      navigate("/orders");
-    } catch (error) {
-      console.error("Lỗi khi thanh toán:", error);
-      console.log("Phản hồi lỗi từ server:", error.response?.data);
-      alert(error.response?.data?.error || "Có lỗi xảy ra khi thanh toán!");
-    }
+
+    // Chuyển hướng sang trang Checkout và truyền dữ liệu giỏ hàng
+    const selectedCartItems = cart.items.filter((item) =>
+      selectedItems.includes(item.productId._id)
+    );
+    navigate("/checkout", { state: { cart: { items: selectedCartItems } } });
   };
 
   if (loading) {
@@ -352,6 +301,9 @@ const Cart = () => {
                   ) : (
                     `${(item.productId.originalPrice || 0).toLocaleString()} VNĐ`
                   )}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Tồn kho: {item.productId.stock}
                 </Typography>
                 <Box display="flex" alignItems="center" mt={1}>
                   <IconButton

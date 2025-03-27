@@ -65,6 +65,7 @@ const Login = () => {
 
     try {
       const response = await axios.post("http://localhost:5000/api/users/auth/login", formData);
+      console.log("Phản hồi từ API:", response.data);
       const { token, user } = response.data;
 
       console.log("Dữ liệu người dùng từ phản hồi API:", user);

@@ -6,13 +6,13 @@ import userRoutes from "./routes/userRoutes.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
 import supplierRoutes from "./routes/supplierRoutes.js";
-import cron from "node-cron";
-import updateBestSellers from "./jobs/updateBestSellers.js";
-import * as inventoryJobTracker from "./jobs/inventoryJobTracker.js";
 import cartRoutes from "./routes/cartRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
-import paymentRoutes from "./routes/paymentRoutes.js"; 
+import paymentRoutes from "./routes/paymentRoutes.js";
 import discountRoutes from "./routes/discountRoutes.js";
+import inventoryRoutes from "./routes/inventoryRoutes.js";
+import reviewRoutes from "./routes/reviewRoutes.js";
+import warehouseRoutes from "./routes/warehouseRoutes.js";
 dotenv.config();
 
 if (!process.env.CONNECT_STRING) {
@@ -20,32 +20,24 @@ if (!process.env.CONNECT_STRING) {
   process.exit(1);
 }
 
-// ✅ Chỉ gọi `mongoose.connect()` một lần
 const connectDB = async () => {
   try {
+    mongoose.set("strictQuery", false); // ✅ Ngăn cảnh báo strictQuery
     await mongoose.connect(process.env.CONNECT_STRING, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
       serverSelectionTimeoutMS: 10000,
     });
+
     console.log("✅ Kết nối MongoDB thành công!");
-
-    // ✅ Chạy JobTracker sau khi MongoDB kết nối thành công
-    cron.schedule("0 0 * * *", async () => {
-      console.log("⏳ Đang chạy JobTracker...");
-      try {
-        await updateBestSellers();
-        await inventoryJobTracker.runInventoryJobTracker();
-        console.log("✅ JobTracker chạy thành công!");
-      } catch (error) {
-        console.error("❌ Lỗi khi chạy JobTracker:", error);
-      }
-    });
-
-    // ✅ Chạy server sau khi kết nối thành công
-    startServer();
+    
+    if (typeof startServer === "function") {
+      startServer(); // ✅ Chạy server sau khi kết nối
+    } else {
+      console.error("❌ Lỗi: Hàm startServer chưa được định nghĩa.");
+    }
   } catch (error) {
-    console.error("❌ Lỗi kết nối MongoDB:", error);
+    console.error("❌ Lỗi kết nối MongoDB:", error.message);
     process.exit(1);
   }
 };
@@ -56,7 +48,7 @@ const startServer = () => {
     origin: ["http://localhost:3000", "http://localhost:3001"],
     credentials: true,
   }));
-  app.use(express.json()); // ✅ Quan trọng: Đảm bảo server hỗ trợ JSON
+  app.use(express.json()); // Đảm bảo server hỗ trợ JSON
   app.get("/", (req, res) => {
     res.send("API Siêu thị đang chạy...");
   });
@@ -69,9 +61,12 @@ const startServer = () => {
   app.use("/api/orders", orderRoutes);
   app.use("/api/payments", paymentRoutes);
   app.use("/api/discounts", discountRoutes);
+  app.use("/api/inventory", inventoryRoutes);
+  app.use("/api/reviews", reviewRoutes);
+  app.use("/api/warehouses", warehouseRoutes);
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => console.log(`🚀 Máy chủ đang chạy trên cổng ${PORT}`));
   console.log("JWT_SECRET:", process.env.JWT_SECRET);
-
 };
+
 connectDB();

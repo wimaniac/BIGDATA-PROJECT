@@ -32,19 +32,22 @@ router.get("/", async (req, res) => {
 router.get("/me", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(" ")[1];
-    console.log("Received token:", token); // Log token nhận được
     if (!token) return res.status(401).json({ message: "No token provided" });
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log("Decoded token:", decoded); // Log dữ liệu giải mã từ token
-    const userId = decoded.id;
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (jwtError) {
+      console.error("JWT Error:", jwtError.message);
+      return res.status(401).json({ message: "Token không hợp lệ!" });
+    }
 
+    const userId = decoded.id;
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({ message: "Invalid user ID in token" });
     }
 
-    const user = await User.findById(userId);
-    console.log("Fetched user:", user); // Log thông tin user lấy được
+    const user = await User.findById(userId).select("-password");
     if (!user) return res.status(404).json({ message: "User not found" });
 
     res.json(user);
@@ -245,7 +248,6 @@ router.delete("/:id", async (req, res) => {
   });
   
 
-// Google Login
 router.post("/auth/google-login", async (req, res) => {
   const { tokenId } = req.body;
   try {
@@ -306,7 +308,8 @@ router.post("/auth/google-register", async (req, res) => {
         });
         await user.save();
       }
-      res.status(201).json({ message: "Đăng ký thành công!", user });
+      const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1d" });
+      res.status(201).json({ message: "Đăng ký thành công!", user, token });
     } else {
       res.status(400).json({ message: "Email không được xác thực!" });
     }

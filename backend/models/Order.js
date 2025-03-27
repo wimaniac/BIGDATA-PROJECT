@@ -36,6 +36,7 @@ const orderSchema = new mongoose.Schema(
       enum: ["Đang xử lí", "Đang giao", "Đã giao", "Đã hủy"],
       index: true,
     },
+    
   },
   { timestamps: true }
 );

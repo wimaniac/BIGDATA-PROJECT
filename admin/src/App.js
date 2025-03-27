@@ -17,7 +17,10 @@ import AccountInfo from "./pages/User/AccountInfo";
 import UserManagement from "./pages/User/UserManagement";
 import OrderManagement from "./pages/Order/OrderManagement";
 import ManageDiscounts from "./pages/Discount/ManageDiscounts";
-// Xóa ProtectedRoute
+import ManageInventory from "./pages/Inventory/ManageInventory";
+import ManageReviews from "./pages/Review/ManageReviews";
+import ManageRevenue from "./pages/Revenue/ManageRevenue";
+import ManageWarehouses from "./pages/Warehouse/ManageWarehouses";
 function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
@@ -42,7 +45,11 @@ function App() {
         <Route path="/user-management" element={<UserManagement />} />
         <Route path="/manage-orders" element={<OrderManagement />} />
         <Route path="/manage-discounts" element={<ManageDiscounts />} />
-      </Routes>
+        <Route path="/manage-inventory" element={<ManageInventory />} />
+        <Route path="/manage-reviews" element={<ManageReviews />} /> 
+        <Route path="/manage-revenue" element={<ManageRevenue />} /> 
+        <Route path="/manage-warehouses" element={<ManageWarehouses />} />
+        </Routes>
     </Router>
   );
 }

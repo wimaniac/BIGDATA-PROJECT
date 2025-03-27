@@ -199,40 +199,43 @@ const OrderManagement = () => {
         <Dialog open={!!selectedOrder} onClose={handleCloseDetails}>
           <DialogTitle>Chi tiết đơn hàng {selectedOrder._id}</DialogTitle>
           <DialogContent>
-            <Typography>
-              <strong>Khách hàng:</strong> {selectedOrder.shippingInfo?.name || "Chưa có"}
-            </Typography>
-            <Typography>
-              <strong>Email:</strong> {selectedOrder.user?.email || "Chưa có email"}
-            </Typography> {/* Thêm email */}
-            <Typography>
-              <strong>Số điện thoại:</strong> {selectedOrder.shippingInfo?.phone || "Chưa có"}
-            </Typography>
-            <Typography>
-              <strong>Địa chỉ:</strong>{" "}
-              {`${selectedOrder.shippingInfo?.address.street || ""}, 
-                ${selectedOrder.shippingInfo?.address.ward || ""}, 
-                ${selectedOrder.shippingInfo?.address.district || ""}, 
-                ${selectedOrder.shippingInfo?.address.city || ""}, 
-                ${selectedOrder.shippingInfo?.address.country || ""}`}
-            </Typography>
-            <Typography>
-              <strong>Tổng tiền:</strong> {selectedOrder.totalAmount.toLocaleString()} VNĐ
-            </Typography>
-            <Typography>
-              <strong>Trạng thái:</strong> {selectedOrder.status}
-            </Typography>
-            <Typography>
-              <strong>Sản phẩm:</strong>
-            </Typography>
-            <ul>
-              {selectedOrder.products.map((item) => (
-                <li key={item.product._id}>
-                  {item.product.name} - Số lượng: {item.quantity}
-                </li>
-              ))}
-            </ul>
-          </DialogContent>
+  <Typography>
+    <strong>Khách hàng:</strong> {selectedOrder.shippingInfo?.name || "Chưa có"}
+  </Typography>
+  <Typography>
+    <strong>Email:</strong> {selectedOrder.user?.email || "Chưa có email"}
+  </Typography>
+  <Typography>
+    <strong>Số điện thoại:</strong> {selectedOrder.shippingInfo?.phone || "Chưa có"}
+  </Typography>
+  <Typography>
+    <strong>Địa chỉ:</strong>{" "}
+    {`${selectedOrder.shippingInfo?.address.street || ""}, 
+      ${selectedOrder.shippingInfo?.address.ward || ""}, 
+      ${selectedOrder.shippingInfo?.address.district || ""}, 
+      ${selectedOrder.shippingInfo?.address.city || ""}, 
+      ${selectedOrder.shippingInfo?.address.country || ""}`}
+  </Typography>
+  <Typography>
+    <strong>Tổng tiền:</strong> {selectedOrder.totalAmount.toLocaleString()} VNĐ
+  </Typography>
+  <Typography>
+    <strong>Trạng thái:</strong> {selectedOrder.status}
+  </Typography>
+  <Typography>
+    <strong>Kho xử lý:</strong> {selectedOrder.warehouse?.name || "Chưa xác định"}
+  </Typography>
+  <Typography>
+    <strong>Sản phẩm:</strong>
+  </Typography>
+  <ul>
+    {selectedOrder.products.map((item) => (
+      <li key={item.product._id}>
+        {item.product.name} - Số lượng: {item.quantity}
+      </li>
+    ))}
+  </ul>
+</DialogContent>
           <DialogActions>
             <Button onClick={handleCloseDetails} color="primary">
               Đóng

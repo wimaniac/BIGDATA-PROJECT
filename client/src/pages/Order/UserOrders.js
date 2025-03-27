@@ -16,11 +16,12 @@ import {
   DialogContent,
   DialogActions,
   Button,
+  TextField,
+  Rating, // Thêm Rating từ MUI
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import axios from "axios";
 
-// Styled components
 const OrdersContainer = styled(Container)(({ theme }) => ({
   marginTop: theme.spacing(4),
   marginBottom: theme.spacing(6),
@@ -33,6 +34,8 @@ const UserOrders = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false); // State cho dialog đánh giá
+  const [reviewData, setReviewData] = useState({ productId: "", rating: 0, comment: "" }); // Dữ liệu đánh giá
   const userId = localStorage.getItem("userId");
   const token = localStorage.getItem("token");
 
@@ -96,6 +99,44 @@ const UserOrders = () => {
     }
   };
 
+  // Hàm mở dialog đánh giá
+  const handleOpenReviewDialog = (productId) => {
+    setReviewData({ productId, rating: 0, comment: "" });
+    setReviewDialogOpen(true);
+  };
+
+  // Hàm đóng dialog đánh giá
+  const handleCloseReviewDialog = () => {
+    setReviewDialogOpen(false);
+    setReviewData({ productId: "", rating: 0, comment: "" });
+  };
+
+  // Hàm gửi đánh giá
+  const handleSubmitReview = async () => {
+    if (!reviewData.rating || !reviewData.comment) {
+      alert("Vui lòng nhập đủ số sao và nội dung đánh giá!");
+      return;
+    }
+
+    try {
+      await axios.post(
+        "http://localhost:5000/api/reviews",
+        {
+          userId,
+          productId: reviewData.productId,
+          rating: reviewData.rating,
+          comment: reviewData.comment,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      alert("Đánh giá thành công!");
+      handleCloseReviewDialog();
+    } catch (error) {
+      console.error("Lỗi khi gửi đánh giá:", error);
+      alert("Có lỗi xảy ra khi gửi đánh giá!");
+    }
+  };
+
   if (loading) {
     return (
       <OrdersContainer>
@@ -150,6 +191,16 @@ const UserOrders = () => {
                             onClick={() => handleCancelOrder(order._id)}
                           >
                             Hủy đơn
+                          </Button>
+                        )}
+                        {order.status === "Đã giao" && (
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            size="small"
+                            onClick={() => handleOpenReviewDialog(order.products[0].product._id)} // Giả sử đánh giá sản phẩm đầu tiên
+                          >
+                            Đánh giá
                           </Button>
                         )}
                       </TableCell>
@@ -216,6 +267,40 @@ const UserOrders = () => {
               </DialogActions>
             </Dialog>
           )}
+
+          {/* Dialog đánh giá sản phẩm */}
+          <Dialog open={reviewDialogOpen} onClose={handleCloseReviewDialog}>
+            <DialogTitle>Đánh giá sản phẩm</DialogTitle>
+            <DialogContent>
+              <Typography variant="subtitle1">Chọn số sao:</Typography>
+              <Rating
+                name="rating"
+                value={reviewData.rating}
+                onChange={(event, newValue) => {
+                  setReviewData((prev) => ({ ...prev, rating: newValue }));
+                }}
+                precision={1} // Cho phép chọn nửa sao
+              />
+              <TextField
+                label="Nhận xét của bạn"
+                multiline
+                rows={4}
+                value={reviewData.comment}
+                onChange={(e) => setReviewData((prev) => ({ ...prev, comment: e.target.value }))}
+                fullWidth
+                margin="normal"
+                variant="outlined"
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={handleCloseReviewDialog} color="secondary">
+                Hủy
+              </Button>
+              <Button onClick={handleSubmitReview} color="primary">
+                Gửi đánh giá
+              </Button>
+            </DialogActions>
+          </Dialog>
         </>
       )}
     </OrdersContainer>

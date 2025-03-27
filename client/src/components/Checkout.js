@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom"; // Thêm useLocation
 import {
   Container,
   Typography,
@@ -37,7 +37,8 @@ const CheckoutButton = styled(Button)(({ theme }) => ({
 
 const Checkout = () => {
   const navigate = useNavigate();
-  const [cart, setCart] = useState(null);
+  const location = useLocation(); // Lấy state từ Cart.js
+  const [cart, setCart] = useState(location.state?.cart || null); // Lấy giỏ hàng từ state
   const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
     name: "",
@@ -49,27 +50,31 @@ const Checkout = () => {
       country: "Vietnam",
     },
     phone: "",
-    paymentMethod: "Tiền mặt khi nhận hàng", // Giá trị mặc định
+    paymentMethod: "Tiền mặt khi nhận hàng",
   });
   const userId = localStorage.getItem("userId");
   const token = localStorage.getItem("token");
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!userId || !token) {
-        navigate("/login");
-        return;
-      }
-  
       try {
-        const cartResponse = await axios.get(`http://localhost:5000/api/cart/${userId}`);
-        console.log("Cart response:", cartResponse.data); // Log để kiểm tra
-        setCart(cartResponse.data);
+        if (!userId || !token) {
+          console.log("Thiếu userId hoặc token trong localStorage");
+          navigate("/login");
+          return;
+        }
   
         const userResponse = await axios.get("http://localhost:5000/api/users/me", {
           headers: { Authorization: `Bearer ${token}` },
         });
         const user = userResponse.data;
+  
+        if (!cart) {
+          const cartResponse = await axios.get(`http://localhost:5000/api/cart/${userId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          setCart(cartResponse.data);
+        }
   
         setFormData({
           name: user.name || "",
@@ -86,13 +91,20 @@ const Checkout = () => {
   
         setLoading(false);
       } catch (error) {
-        console.error("Lỗi khi lấy dữ liệu:", error);
+        console.error("Lỗi khi kiểm tra đăng nhập hoặc lấy dữ liệu:", error);
+        if (error.response?.status === 401) {
+          console.log("Token không hợp lệ, chuyển hướng về /login");
+          localStorage.removeItem("token"); // Xóa token không hợp lệ
+          localStorage.removeItem("userId");
+          navigate("/login");
+        } else {
+          alert("Thanh toán thành công");
+        }
         setLoading(false);
       }
     };
     fetchData();
-  }, [userId, token, navigate]);
-
+  }, [userId, token, navigate, cart]);
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     if (name.startsWith("address.")) {
@@ -109,10 +121,11 @@ const Checkout = () => {
   const calculateTotal = () => {
     if (!cart || !cart.items) return 0;
     return cart.items.reduce(
-      (total, item) => total + item.productId.price * item.quantity,
+      (total, item) => total + (item.productId.discountedPrice || item.productId.price) * item.quantity,
       0
     );
   };
+
   const handleCheckout = async () => {
     const { name, address, phone, paymentMethod } = formData;
     if (!name || !address.street || !address.city || !phone || !paymentMethod) {
@@ -121,22 +134,28 @@ const Checkout = () => {
     }
   
     try {
-      // 1. Tạo đơn hàng
       const orderData = {
         user: userId,
         products: cart.items.map((item) => ({
           product: item.productId._id,
           quantity: item.quantity,
+          price: item.productId.discountedPrice || item.productId.price,
         })),
         totalAmount: calculateTotal(),
         shippingInfo: { name, address, phone },
         status: "Đang xử lí",
       };
       console.log("Tạo đơn hàng với dữ liệu:", orderData);
-      const orderResponse = await axios.post("http://localhost:5000/api/orders", orderData);
+      const orderResponse = await axios.post(
+        "http://localhost:5000/api/orders",
+        orderData,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
       const orderId = orderResponse.data._id;
+      const selectedWarehouse = orderResponse.data.warehouse;
   
-      // 2. Tạo thanh toán
       const paymentData = {
         order: orderId,
         user: userId,
@@ -145,9 +164,10 @@ const Checkout = () => {
         status: "Đang xử lí",
       };
       console.log("Tạo thanh toán với dữ liệu:", paymentData);
-      await axios.post("http://localhost:5000/api/payments", paymentData);
+      await axios.post("http://localhost:5000/api/payments", paymentData, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
   
-      // 3. Cập nhật thông tin người dùng
       console.log("Cập nhật thông tin người dùng:", { address: formData.address, phone: formData.phone });
       await axios.put(
         `http://localhost:5000/api/users/${userId}`,
@@ -160,22 +180,23 @@ const Checkout = () => {
         }
       );
   
-      // 4. Cập nhật state và thông báo cho Header
       setCart(null);
-      window.dispatchEvent(new Event("cartUpdated")); // Dispatch sự kiện cartUpdated
+      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: { cartCount: 0 } }));
   
-      alert("Thanh toán thành công!");
-      navigate("/"); // Điều hướng về trang chủ
+      navigate("/");
     } catch (error) {
       console.error("Lỗi khi thanh toán:", error);
       if (error.response) {
         console.log("Status:", error.response.status);
         console.log("Data:", error.response.data);
+        alert(`Có lỗi xảy ra: ${error.response.data.message || "Lỗi không xác định"}`);
+      } else {
+        alert("Có lỗi xảy ra khi thanh toán!");
       }
-      alert("Có lỗi xảy ra khi thanh toán!");
     }
   };
-if (loading) {
+
+  if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
         <Typography variant="h6">Đang tải...</Typography>
@@ -211,7 +232,7 @@ if (loading) {
                 <Box key={item.productId._id} sx={{ mb: 2 }}>
                   <Typography variant="body1">
                     {item.productId.name} - {item.quantity} x{" "}
-                    {item.productId.price.toLocaleString()} VNĐ
+                    {(item.productId.discountedPrice || item.productId.price).toLocaleString()} VNĐ
                   </Typography>
                 </Box>
               ))}
