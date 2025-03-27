@@ -1,6 +1,7 @@
 import express from "express";
 import Inventory from "../models/Inventory.js";
-
+import mongoose from "mongoose";
+import Product from "../models/Product.js";
 const router = express.Router();
 
 // Get all inventory items
@@ -39,41 +40,154 @@ router.get("/category/:categoryId", async (req, res) => {
 
 // Create a new inventory item
 router.post("/", async (req, res) => {
-  const inventoryItem = new Inventory(req.body);
+  console.log("Dữ liệu nhận được từ frontend:", req.body);
+  const { product, quantity, price, category, warehouse } = req.body;
+
+  if (!product || !quantity || !warehouse) {
+    return res.status(400).json({ message: "Thiếu thông tin cần thiết!" });
+  }
+
   try {
-    const newInventoryItem = await inventoryItem.save();
-    res.status(201).json(newInventoryItem);
+    if (!mongoose.Types.ObjectId.isValid(product)) {
+      return res.status(400).json({ message: "ID sản phẩm không hợp lệ!" });
+    }
+
+    console.log("Tìm sản phẩm với ID:", product);
+    const productDoc = await Product.findById(product);
+    if (!productDoc) {
+      console.log("Không tìm thấy sản phẩm với ID:", product);
+      return res.status(404).json({ message: "Sản phẩm không tồn tại!" });
+    }
+    console.log("Sản phẩm tìm thấy:", productDoc);
+
+    const currentInventory = await Inventory.aggregate([
+      { $match: { product: new mongoose.Types.ObjectId(product) } },
+      { $group: { _id: "$product", total: { $sum: "$quantity" } } }
+    ]);
+    const currentTotal = currentInventory[0]?.total || 0;
+
+    if (currentTotal + quantity > productDoc.stock) {
+      return res.status(400).json({
+        message: `Không thể thêm ${quantity}. Tổng tồn kho (${currentTotal + quantity}) vượt quá số lượng tối đa ban đầu (${productDoc.stock})!`
+      });
+    }
+
+    const inventory = new Inventory({
+      product,
+      quantity,
+      price,
+      category,
+      warehouse,
+    });
+    const newInventory = await inventory.save();
+
+    // Không cập nhật product.stock trong POST
+    res.status(201).json(newInventory);
   } catch (err) {
+    console.error("Lỗi trong POST /api/inventory:", err);
     res.status(400).json({ message: err.message });
   }
 });
 
 // Update inventory item
 router.put("/:id", async (req, res) => {
+  console.log("Dữ liệu nhận được từ frontend:", req.body);
+  const { quantity, product } = req.body;
+
   try {
+    const inventoryItem = await Inventory.findById(req.params.id);
+    if (!inventoryItem) {
+      return res.status(404).json({ message: "Inventory item not found" });
+    }
+
+    const productId = product || inventoryItem.product;
+    const productDoc = await Product.findById(productId);
+    if (!productDoc) {
+      return res.status(404).json({ message: "Sản phẩm không tồn tại!" });
+    }
+
+    // Tính tổng hiện tại và thay đổi
+    const currentInventory = await Inventory.aggregate([
+      { $match: { product: new mongoose.Types.ObjectId(productId) } },
+      { $group: { _id: "$product", total: { $sum: "$quantity" } } }
+    ]);
+    const currentTotal = currentInventory[0]?.total || 0;
+    const diff = quantity - inventoryItem.quantity;
+    const newTotal = currentTotal + diff;
+
+    // Không chặn, chỉ cảnh báo nếu vượt
+    if (newTotal > productDoc.stock) {
+      console.warn(`Tổng tồn kho mới (${newTotal}) vượt quá stock ban đầu (${productDoc.stock}). Đang đồng bộ lại stock.`);
+    }
+
     const updatedInventoryItem = await Inventory.findByIdAndUpdate(
       req.params.id,
       req.body,
       { new: true }
     );
-    if (!updatedInventoryItem)
-      return res.status(404).json({ message: "Inventory item not found" });
+
+    // Đồng bộ Product.stock với tổng thực tế
+    const totalStock = await Inventory.aggregate([
+      { $match: { product: new mongoose.Types.ObjectId(productId) } },
+      { $group: { _id: "$product", total: { $sum: "$quantity" } } }
+    ]);
+    const newStock = totalStock[0]?.total || 0;
+    await Product.findByIdAndUpdate(productId, { stock: newStock });
+
     res.json(updatedInventoryItem);
   } catch (err) {
+    console.error("Lỗi trong PUT /api/inventory/:id:", err);
     res.status(400).json({ message: err.message });
   }
 });
+// Adjust inventory item (chỉ sửa lỗi số lượng, không đồng bộ Product.stock)
+router.put("/adjust/:id", async (req, res) => {
+  const { quantity } = req.body;
 
+  try {
+    const inventoryItem = await Inventory.findById(req.params.id);
+    if (!inventoryItem) {
+      return res.status(404).json({ message: "Inventory item not found" });
+    }
+
+    const productDoc = await Product.findById(inventoryItem.product);
+    if (!productDoc) {
+      return res.status(404).json({ message: "Sản phẩm không tồn tại!" });
+    }
+
+    // Cập nhật quantity trong Inventory mà không ảnh hưởng Product.stock
+    inventoryItem.quantity = quantity;
+    const updatedInventoryItem = await inventoryItem.save();
+
+    // Không đồng bộ Product.stock ở đây
+    // Thay vào đó, ghi log để quản trị viên kiểm tra nếu cần
+    console.log(`Đã điều chỉnh Inventory ${inventoryItem._id} từ ${inventoryItem.quantity} thành ${quantity}`);
+
+    res.json({ message: "Đã điều chỉnh tồn kho", updatedInventoryItem });
+  } catch (err) {
+    console.error("Lỗi trong PUT /api/inventory/adjust/:id:", err);
+    res.status(400).json({ message: err.message });
+  }
+});
 // Delete inventory item
 router.delete("/:id", async (req, res) => {
   try {
-    const deletedInventoryItem = await Inventory.findByIdAndDelete(
-      req.params.id
-    );
+    const deletedInventoryItem = await Inventory.findByIdAndDelete(req.params.id);
     if (!deletedInventoryItem)
       return res.status(404).json({ message: "Inventory item not found" });
+
+    // Cập nhật product.stock sau khi xóa
+    const productId = deletedInventoryItem.product;
+    const totalStock = await Inventory.aggregate([
+      { $match: { product: new mongoose.Types.ObjectId(productId) } },
+      { $group: { _id: "$product", total: { $sum: "$quantity" } } }
+    ]);
+    const newStock = totalStock[0]?.total || 0;
+    await Product.findByIdAndUpdate(productId, { stock: newStock });
+
     res.json({ message: "Inventory item deleted" });
   } catch (err) {
+    console.error("Lỗi trong DELETE /api/inventory/:id:", err);
     res.status(500).json({ message: err.message });
   }
 });

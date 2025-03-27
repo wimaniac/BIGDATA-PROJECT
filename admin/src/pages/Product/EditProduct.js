@@ -99,22 +99,17 @@ const EditProduct = () => {
     try {
       const formData = new FormData();
       Object.keys(productData).forEach((key) => {
-        if (key !== "mainImage" && key !== "additionalImages") {
+        if (key !== "mainImage" && key !== "additionalImages" && key !== "stock") { // Loại bỏ stock
           formData.append(key, productData[key]);
         }
       });
   
-      // Gửi danh sách ảnh cần xóa
       if (removeImages.length > 0) {
         formData.append("removeAdditionalImages", JSON.stringify(removeImages));
       }
-  
-      // Thêm ảnh chính nếu có ảnh mới
       if (selectedMainImage) {
         formData.append("mainImage", selectedMainImage);
       }
-  
-      // Thêm ảnh phụ nếu có ảnh mới
       selectedAdditionalImages.forEach((image) => {
         formData.append("additionalImages", image);
       });
@@ -129,7 +124,7 @@ const EditProduct = () => {
       navigate("/products");
     } catch (error) {
       console.error("❌ Lỗi khi cập nhật sản phẩm:", error);
-      alert("Cập nhật sản phẩm thất bại!");
+      alert(error.response?.data?.message || "Cập nhật sản phẩm thất bại!");
     }
   };
   
@@ -289,19 +284,6 @@ const EditProduct = () => {
           />
         </Grid>
 
-        {/* Số lượng */}
-        <Grid item xs={6}>
-          <TextField
-            label="Số lượng tồn kho"
-            variant="outlined"
-            fullWidth
-            type="number"
-            value={productData.stock}
-            onChange={(e) =>
-              setProductData({ ...productData, stock: e.target.value })
-            }
-          />
-        </Grid>
       </Grid>
 
       {/* Chọn danh mục chính */}

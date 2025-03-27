@@ -209,55 +209,63 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    const warehouses = await Warehouse.find().lean();
+    // **Map Phase**: Thu thập dữ liệu từ các nguồn (warehouses, inventories)
+    // - Lấy danh sách tất cả kho (warehouses) và tồn kho (inventories) liên quan đến sản phẩm trong đơn hàng
+    // - Mục tiêu: Chuẩn bị dữ liệu đầu vào để xử lý song song
+    const warehouses = await Warehouse.find().lean(); // Lấy tất cả kho
     const inventories = await Inventory.find({ product: { $in: products.map(p => p.product) } })
       .populate("warehouse")
-      .lean();
+      .lean(); // Lấy tồn kho cho các sản phẩm trong đơn hàng
 
-    const mappedData = products.map(item => ({
-      key: item.product,
-      value: { quantity: item.quantity, city: shippingInfo.address.city }
-    }));
-
+    // **Partition/Combine Phase**: Phân vùng dữ liệu theo khoảng cách địa lý
+    // - Tính khoảng cách từ địa chỉ khách hàng đến từng kho
+    // - Kết hợp dữ liệu kho với khoảng cách để chuẩn bị cho bước chọn kho tối ưu
     const userCity = shippingInfo.address.city;
     const warehouseDistances = await Promise.all(
       warehouses.map(async warehouse => {
-        const distance = await calculateDistance(userCity, warehouse.location);
+        const distance = await calculateDistance(userCity, warehouse.location); // Hàm giả định tính khoảng cách
         return { warehouse, distance };
       })
     );
 
+    // Sắp xếp kho theo khoảng cách (từ gần đến xa)
     warehouseDistances.sort((a, b) => a.distance - b.distance);
-    let selectedWarehouse = null;
 
+    // **Region Phase**: Lọc và chọn kho khả dụng (kết quả tạm thời)
+    // - Duyệt qua từng kho theo thứ tự gần nhất để tìm kho có đủ tồn kho
+    // - Lưu trữ kho được chọn làm kết quả tạm thời (selectedWarehouse)
+    let selectedWarehouse = null;
     for (const { warehouse } of warehouseDistances) {
       const warehouseInventory = inventories.filter(
         inv => inv.warehouse._id.toString() === warehouse._id.toString()
-      );
+      ); // Lọc tồn kho theo kho hiện tại
       const hasEnoughStock = products.every(product => {
         const inv = warehouseInventory.find(i => i.product.toString() === product.product);
-        return inv && inv.quantity >= product.quantity;
+        return inv && inv.quantity >= product.quantity; // Kiểm tra đủ hàng
       });
 
       if (hasEnoughStock) {
         selectedWarehouse = warehouse;
-        break;
+        break; // Thoát khi tìm thấy kho phù hợp
       }
     }
 
+    // Validation: Nếu không tìm thấy kho nào đủ tồn kho
     if (!selectedWarehouse) {
       return res.status(400).json({ message: "Không có kho nào đủ tồn kho!" });
     }
 
-    // Cập nhật tồn kho vật lý (Inventory.quantity) và tính lại Product.stock
+    // **Reduce Phase**: Cập nhật tồn kho và đồng bộ dữ liệu
+    // - Giảm số lượng tồn kho trong kho được chọn
+    // - Đồng bộ Product.stock với tổng tồn kho thực tế từ tất cả kho
     for (const product of products) {
       const inventory = inventories.find(
         inv => inv.product.toString() === product.product && inv.warehouse._id.toString() === selectedWarehouse._id.toString()
       );
-      inventory.quantity -= product.quantity;
+      inventory.quantity -= product.quantity; // Giảm số lượng tồn kho
       await Inventory.findByIdAndUpdate(inventory._id, { quantity: inventory.quantity });
 
-      // Tính lại Product.stock
+      // Đồng bộ Product.stock
       const totalStock = await Inventory.aggregate([
         { $match: { product: new mongoose.Types.ObjectId(product.product) } },
         { $group: { _id: "$product", total: { $sum: "$quantity" } } }
@@ -266,6 +274,7 @@ router.post("/", async (req, res) => {
       await Product.findByIdAndUpdate(product.product, { stock: newStock });
     }
 
+    // Tạo đơn hàng mới với kho đã chọn
     const order = new Order({
       user,
       products,
@@ -276,9 +285,11 @@ router.post("/", async (req, res) => {
     });
     const newOrder = await order.save();
 
+    // Xóa giỏ hàng sau khi đặt hàng thành công
     const deletedCart = await Cart.findOneAndDelete({ userId: user });
     console.log("Giỏ hàng đã xóa:", deletedCart);
 
+    // Trả về kết quả cuối cùng
     res.status(201).json({
       ...newOrder.toJSON(),
       warehouse: selectedWarehouse,

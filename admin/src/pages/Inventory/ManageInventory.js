@@ -18,7 +18,7 @@ import {
   Paper,
   MenuItem,
 } from "@mui/material";
-import { Edit, Delete } from "@mui/icons-material";
+import { Edit, Delete, Adjust } from "@mui/icons-material"; // Thêm Adjust icon
 import axios from "axios";
 
 const ManageInventory = () => {
@@ -35,7 +35,7 @@ const ManageInventory = () => {
     price: 0,
     parentCategory: "",
     subCategory: "",
-    warehouse: "", // Thêm trường warehouse
+    warehouse: "",
   });
   const token = localStorage.getItem("token");
 
@@ -44,16 +44,11 @@ const ManageInventory = () => {
     fetchProducts();
     fetchParentCategories();
     fetchWarehouses();
-  
-    // Lắng nghe sự kiện cập nhật tồn kho
+
     const handleInventoryUpdate = () => fetchInventoryItems();
     window.addEventListener("inventoryUpdated", handleInventoryUpdate);
     return () => window.removeEventListener("inventoryUpdated", handleInventoryUpdate);
   }, []);
-  
-  // Phát sự kiện từ Checkout.js
-  // Trong handleCheckout, sau khi gọi process-inventory thành công:
-  window.dispatchEvent(new Event("inventoryUpdated"));
 
   const fetchWarehouses = async () => {
     try {
@@ -103,9 +98,7 @@ const ManageInventory = () => {
     try {
       const response = await axios.get(
         `http://localhost:5000/api/categories/subcategories/${parentId}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       setSubCategories(response.data);
     } catch (error) {
@@ -114,9 +107,7 @@ const ManageInventory = () => {
     }
   };
 
-  const handleOpen = (
-    item = { product: "", quantity: 1, price: 0, parentCategory: "", subCategory: "", warehouse: "" }
-  ) => {
+  const handleOpen = (item = { product: "", quantity: 1, price: 0, parentCategory: "", subCategory: "", warehouse: "" }) => {
     setCurrentItem(item);
     setEditMode(!!item._id);
     if (item.product) {
@@ -126,7 +117,7 @@ const ManageInventory = () => {
           ...prev,
           parentCategory: selectedProduct.parentCategory._id || "",
           subCategory: selectedProduct.subCategory?._id || "",
-          warehouse: item.warehouse || "", // Điền warehouse nếu có
+          warehouse: item.warehouse || "",
         }));
         fetchSubCategories(selectedProduct.parentCategory._id);
       }
@@ -142,22 +133,16 @@ const ManageInventory = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-
     if (name === "quantity") {
       const newQuantity = parseInt(value) || 1;
-      setCurrentItem((prev) => ({
-        ...prev,
-        [name]: Math.max(1, newQuantity),
-      }));
+      setCurrentItem((prev) => ({ ...prev, [name]: Math.max(1, newQuantity) }));
     } else {
       setCurrentItem((prev) => ({ ...prev, [name]: value }));
     }
-
     if (name === "parentCategory") {
       fetchSubCategories(value);
       setCurrentItem((prev) => ({ ...prev, subCategory: "" }));
     }
-
     if (name === "product") {
       const selectedProduct = products.find((p) => p._id === value);
       if (selectedProduct) {
@@ -181,17 +166,16 @@ const ManageInventory = () => {
       alert("Vui lòng chọn kho!");
       return;
     }
-    
-
     try {
       const data = {
         product: currentItem.product,
         quantity: parseInt(currentItem.quantity),
         price: parseFloat(currentItem.price),
         category: currentItem.parentCategory,
-        warehouse: currentItem.warehouse, 
+        warehouse: currentItem.warehouse,
       };
-
+      console.log("Dữ liệu gửi lên:", data);
+      if (!token) throw new Error("Không tìm thấy token!");
       if (editMode) {
         await axios.put(`http://localhost:5000/api/inventory/${currentItem._id}`, data, {
           headers: { Authorization: `Bearer ${token}` },
@@ -205,7 +189,8 @@ const ManageInventory = () => {
       handleClose();
     } catch (error) {
       console.error("Lỗi khi lưu kho hàng:", error);
-      alert("Có lỗi xảy ra khi lưu kho hàng!");
+      console.log("Chi tiết lỗi:", error.response);
+      alert(error.response?.data?.message ? `Lỗi: ${error.response.data.message}` : "Có lỗi xảy ra khi lưu kho hàng!");
     }
   };
 
@@ -220,6 +205,22 @@ const ManageInventory = () => {
         console.error("Lỗi khi xóa kho hàng:", error);
         alert("Có lỗi xảy ra khi xóa kho hàng!");
       }
+    }
+  };
+
+  const handleAdjust = async (id, currentQuantity) => {
+    const newQuantity = prompt("Nhập số lượng mới:", currentQuantity);
+    if (newQuantity === null || isNaN(newQuantity)) return;
+    try {
+      await axios.put(
+        `http://localhost:5000/api/inventory/adjust/${id}`,
+        { quantity: parseInt(newQuantity) },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      fetchInventoryItems();
+    } catch (error) {
+      console.error("Lỗi khi điều chỉnh:", error);
+      alert("Có lỗi khi điều chỉnh tồn kho!");
     }
   };
 
@@ -238,11 +239,8 @@ const ManageInventory = () => {
             <TableRow>
               <TableCell>Sản phẩm</TableCell>
               <TableCell>Số lượng</TableCell>
-              <TableCell>Giá</TableCell>
-              <TableCell>Danh mục cha</TableCell>
-              <TableCell>Danh mục con</TableCell>
-              <TableCell>Kho</TableCell> {/* Thêm cột kho */}
-              <TableCell>Hành động</TableCell>
+              <TableCell>Kho</TableCell>
+              <TableCell align="center">Hành động</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -253,16 +251,16 @@ const ManageInventory = () => {
                 <TableRow key={item._id}>
                   <TableCell>{product?.name || "Không xác định"}</TableCell>
                   <TableCell>{item.quantity}</TableCell>
-                  <TableCell>{item.price.toLocaleString()} VNĐ</TableCell>
-                  <TableCell>{product?.parentCategory?.name || "Không xác định"}</TableCell>
-                  <TableCell>{product?.subCategory?.name || "Không có"}</TableCell>
-                  <TableCell>{warehouse?.name || "Không xác định"}</TableCell> {/* Hiển thị tên kho */}
-                  <TableCell>
-                    <IconButton onClick={() => handleOpen(item)}>
-                      <Edit />
+                  <TableCell>{warehouse?.name || "Không xác định"}</TableCell>
+                  <TableCell align="center">
+                    <IconButton size="small" onClick={() => handleOpen(item)}>
+                      <Edit fontSize="small" />
                     </IconButton>
-                    <IconButton onClick={() => handleDelete(item._id)}>
-                      <Delete />
+                    <IconButton size="small" onClick={() => handleAdjust(item._id, item.quantity)}>
+                      <Adjust fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" onClick={() => handleDelete(item._id)}>
+                      <Delete fontSize="small" />
                     </IconButton>
                   </TableCell>
                 </TableRow>
@@ -272,7 +270,6 @@ const ManageInventory = () => {
         </Table>
       </TableContainer>
 
-      {/* Dialog thêm/sửa sản phẩm trong kho */}
       <Dialog open={open} onClose={handleClose}>
         <DialogTitle>{editMode ? "Sửa thông tin kho" : "Thêm sản phẩm vào kho"}</DialogTitle>
         <DialogContent>
@@ -307,11 +304,7 @@ const ManageInventory = () => {
                 {sub.name}
               </MenuItem>
             ))}
-            {subCategories.length === 0 && (
-              <MenuItem value="" disabled>
-                Không có danh mục con
-              </MenuItem>
-            )}
+            {subCategories.length === 0 && <MenuItem value="" disabled>Không có danh mục con</MenuItem>}
           </TextField>
           <TextField
             select

@@ -132,6 +132,7 @@ router.post(
 );
 
 // Update product
+// Update product
 router.put(
   "/:id",
   upload.fields([
@@ -147,16 +148,21 @@ router.put(
       if (!product)
         return res.status(404).json({ message: "Không tìm thấy sản phẩm" });
 
-      // Cập nhật thông tin sản phẩm
+      // Cập nhật thông tin sản phẩm, trừ stock
       product.name = req.body.name || product.name;
       product.price = parseFloat(req.body.price) || product.price;
-      product.parentCategory =
-        req.body.parentCategory || product.parentCategory;
+      product.parentCategory = req.body.parentCategory || product.parentCategory;
       product.subCategory = req.body.subCategory || product.subCategory;
       product.supplier = req.body.supplier || product.supplier;
-      product.stock = parseInt(req.body.stock) || product.stock;
       product.details = req.body.details || product.details;
       product.isFeature = req.body.isFeature === "true";
+
+      // Không cho phép cập nhật stock từ frontend
+      if (req.body.stock !== undefined) {
+        return res.status(403).json({
+          message: "Không thể cập nhật số lượng tồn kho thủ công! Số lượng sẽ được đồng bộ từ các kho.",
+        });
+      }
 
       // Cập nhật ảnh chính nếu có ảnh mới
       if (req.files.mainImage) {
@@ -169,7 +175,7 @@ router.put(
         product.additionalImages = [
           ...(product.additionalImages || []),
           ...newImages,
-        ]; // Thêm ảnh mới vào danh sách ảnh cũ
+        ];
       }
 
       // Xóa ảnh phụ nếu có yêu cầu
@@ -180,7 +186,6 @@ router.put(
         );
       }
 
-      // Lưu vào database
       const updatedProduct = await product.save();
       res.json(updatedProduct);
     } catch (err) {
