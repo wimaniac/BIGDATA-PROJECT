@@ -64,6 +64,29 @@ const AccountInfo = () => {
     }
   }, []);
 
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      const token = localStorage.getItem("token");
+      console.log("Token được gửi:", token); // Log token để kiểm tra
+      if (!token) {
+        setError("Bạn cần đăng nhập để xem thông tin tài khoản!");
+        return;
+      }
+
+      try {
+        const response = await axios.get("http://localhost:5000/api/users/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setUser(response.data);
+      } catch (error) {
+        console.error("Lỗi khi lấy thông tin tài khoản:", error);
+        setError(error.response?.data?.message || "Không thể lấy thông tin tài khoản!");
+      }
+    };
+
+    fetchUserInfo();
+  }, []);
+
   // Xử lý thay đổi input thông tin cơ bản
   const handleInputChange = (e) => {
     const { name, value } = e.target;

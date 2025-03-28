@@ -30,32 +30,67 @@ const checkRole = async (req, res, next) => {
     res.status(401).json({ message: "Token không hợp lệ!" });
   }
 };
-
-// Hàm tính khoảng cách (sử dụng OpenRouteService)
-async function calculateDistance(city1, city2) {
+// Hàm tính khoảng cách bằng OpenRouteService Directions API
+const calculateDistance = async (city1, city2) => {
   try {
-    const apiKey = "5b3ce3597851110001cf6248cec8ea436c0e4860877fe546696f27f0";
+    const apiKey = "5b3ce3597851110001cf6248cec8ea436c0e4860877fe546696f27f0"; // Thay bằng API key của bạn
     const coords1 = await getCoordinates(city1);
     const coords2 = await getCoordinates(city2);
+
     const response = await axios.get(
       `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${apiKey}&start=${coords1.lng},${coords1.lat}&end=${coords2.lng},${coords2.lat}`
     );
-    return response.data.features[0].properties.segments[0].distance / 1000; // km
+
+    const distanceInMeters = response.data.features[0].properties.segments[0].distance;
+    return distanceInMeters / 1000; // Chuyển sang km
   } catch (err) {
-    console.error("Lỗi tính khoảng cách:", err);
-    return Infinity;
+    console.error(`Lỗi khi tính khoảng cách giữa ${city1} và ${city2}:`, err.message);
+    return Infinity; // Trả về vô cực nếu lỗi để không chọn kho này
   }
-}
+};
 
-async function getCoordinates(city) {
+// Hàm lấy tọa độ từ thành phố bằng OpenRouteService Geocoding
+const getCoordinates = async (city) => {
+  try {
+    const apiKey = "5b3ce3597851110001cf6248cec8ea436c0e4860877fe546696f27f0"; // Thay bằng API key của bạn
+    const response = await axios.get(
+      `https://api.openrouteservice.org/geocode/search?api_key=${apiKey}&text=${encodeURIComponent(city)}&boundary.country=VN`
+    );
+    const { coordinates } = response.data.features[0].geometry;
+    return { lng: coordinates[0], lat: coordinates[1] };
+  } catch (err) {
+    console.error(`Lỗi khi lấy tọa độ của ${city}:`, err.message);
+    throw new Error("Không thể lấy tọa độ");
+  }
+};
+// Hàm tìm kho gần nhất dựa trên OpenRouteService Directions API
+const findNearestWarehouse = async (shippingCity, productId, quantityOrdered) => {
+  const inventoryItems = await Inventory.find({ product: productId })
+    .populate("warehouse")
+    .lean();
+
+  if (!inventoryItems.length) return null;
+
   const apiKey = "5b3ce3597851110001cf6248cec8ea436c0e4860877fe546696f27f0";
-  const response = await axios.get(
-    `https://api.openrouteservice.org/geocode/search?api_key=${apiKey}&text=${encodeURIComponent(city)}&boundary.country=VN`
-  );
-  const { coordinates } = response.data.features[0].geometry;
-  return { lng: coordinates[0], lat: coordinates[1] };
-}
 
+  const warehouseDistances = await Promise.all(
+    inventoryItems.map(async (item) => {
+      const warehouseCity = item.warehouse.location.city;
+      const distance = await calculateDistance(shippingCity, warehouseCity);
+      return { warehouse: item.warehouse, distance, inventory: item };
+    })
+  );
+
+  warehouseDistances.sort((a, b) => a.distance - b.distance);
+
+  for (const { warehouse, inventory } of warehouseDistances) {
+    if (inventory.quantity >= quantityOrdered) { // Sử dụng quantityOrdered
+      return warehouse;
+    }
+  }
+
+  return warehouseDistances[0]?.warehouse || null;
+};
 // Tạo đơn hàng mới
 router.post("/", async (req, res) => {
   const { user, products, totalAmount, shippingInfo, status } = req.body;
@@ -65,26 +100,16 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    // Lấy danh sách kho và tồn kho
     const warehouses = await Warehouse.find().lean();
     const inventories = await Inventory.find({ product: { $in: products.map(p => p.product) } })
       .populate("warehouse")
       .lean();
 
-    // Tính khoảng cách và chọn kho gần nhất
     const userCity = shippingInfo.address.city;
-    const warehouseDistances = await Promise.all(
-      warehouses.map(async warehouse => {
-        const distance = await calculateDistance(userCity, warehouse.location);
-        return { warehouse, distance };
-      })
-    );
-
-    warehouseDistances.sort((a, b) => a.distance - b.distance);
-
-    // Tìm kho có đủ tồn kho
     let selectedWarehouse = null;
-    for (const { warehouse } of warehouseDistances) {
+
+    // Kiểm tra kho có đủ hàng nhưng không giảm tồn kho
+    for (const warehouse of warehouses) {
       const warehouseInventory = inventories.filter(
         inv => inv.warehouse._id.toString() === warehouse._id.toString()
       );
@@ -103,16 +128,6 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ message: "Không có kho nào đủ tồn kho!" });
     }
 
-    // Cập nhật tồn kho
-    for (const product of products) {
-      const inventory = inventories.find(
-        inv => inv.product.toString() === product.product && inv.warehouse._id.toString() === selectedWarehouse._id.toString()
-      );
-      inventory.quantity -= product.quantity;
-      await Inventory.findByIdAndUpdate(inventory._id, { quantity: inventory.quantity });
-    }
-
-    // Tạo đơn hàng mới
     const order = new Order({
       user,
       products,
@@ -123,7 +138,6 @@ router.post("/", async (req, res) => {
     });
     const newOrder = await order.save();
 
-    // Xóa giỏ hàng
     const deletedCart = await Cart.findOneAndDelete({ userId: user });
     console.log("Giỏ hàng đã xóa:", deletedCart);
 
@@ -136,7 +150,6 @@ router.post("/", async (req, res) => {
     res.status(400).json({ message: err.message });
   }
 });
-
 // Lấy tất cả đơn hàng
 router.get("/", checkRole, async (req, res) => {
   try {
@@ -221,50 +234,51 @@ router.get("/revenue-reports/time", checkRole, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+// Cập nhật trạng thái đơn hàng
 router.put("/:id/status", async (req, res) => {
   const { status } = req.body;
 
   try {
-    const order = await Order.findById(req.params.id).populate("products.product").populate("user");
+    const order = await Order.findById(req.params.id)
+      .populate("products.product")
+      .populate("user");
     if (!order) return res.status(404).json({ message: "Không tìm thấy đơn hàng!" });
 
     order.status = status;
     await order.save();
 
-    // Xử lý tồn kho khi trạng thái là "Đã giao"
     if (status === "Đã giao") {
-      const shippingCity = order.shippingInfo?.city || order.user.address.city;
+      const shippingCity = order.shippingInfo?.address?.city || order.user?.address?.city;
       if (!shippingCity) {
         return res.status(400).json({ message: "Không xác định được thành phố giao hàng!" });
       }
 
+      const shippingCoords = await getCoordinates(shippingCity);
+
       for (const item of order.products) {
         const productId = item.product._id;
-        const quantityOrdered = item.quantity;
+        const quantityOrdered = item.quantity; // Lấy quantityOrdered từ item.quantity
 
-        // Tìm kho gần nhất
-        const nearestWarehouse = await findNearestWarehouse(shippingCity, productId);
+        const nearestWarehouse = await findNearestWarehouse(shippingCity, productId, quantityOrdered);
         if (!nearestWarehouse) {
-          return res.status(400).json({ 
-            message: `Không tìm thấy kho chứa sản phẩm ${item.product.name}` 
+          return res.status(400).json({
+            message: `Không tìm thấy kho chứa sản phẩm ${item.product.name}`,
           });
         }
 
-        // Tìm bản ghi Inventory tại kho gần nhất
         const inventoryItem = await Inventory.findOne({
           product: productId,
           warehouse: nearestWarehouse._id,
         });
         if (!inventoryItem) {
-          return res.status(400).json({ 
-            message: `Sản phẩm ${item.product.name} không có trong kho ${nearestWarehouse.name}` 
+          return res.status(400).json({
+            message: `Sản phẩm ${item.product.name} không có trong kho ${nearestWarehouse.name}`,
           });
         }
 
-        // Kiểm tra và giảm số lượng
         if (inventoryItem.quantity < quantityOrdered) {
-          return res.status(400).json({ 
-            message: `Kho ${nearestWarehouse.name} không đủ tồn kho cho ${item.product.name} (Còn: ${inventoryItem.quantity}, Cần: ${quantityOrdered})` 
+          return res.status(400).json({
+            message: `Kho ${nearestWarehouse.name} không đủ tồn kho cho ${item.product.name} (Còn: ${inventoryItem.quantity}, Cần: ${quantityOrdered})`,
           });
         }
 
@@ -272,10 +286,9 @@ router.put("/:id/status", async (req, res) => {
         await inventoryItem.save();
         console.log(`Đã giảm ${quantityOrdered} sản phẩm ${item.product.name} tại kho ${nearestWarehouse.name}`);
 
-        // Đồng bộ Product.stock
         const totalStock = await Inventory.aggregate([
           { $match: { product: new mongoose.Types.ObjectId(productId) } },
-          { $group: { _id: "$product", total: { $sum: "$quantity" } } }
+          { $group: { _id: "$product", total: { $sum: "$quantity" } } },
         ]);
         const newStock = totalStock[0]?.total || 0;
         await Product.findByIdAndUpdate(productId, { stock: newStock });
@@ -289,23 +302,6 @@ router.put("/:id/status", async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
-
-// Hàm tìm kho gần nhất dựa trên thành phố
-const findNearestWarehouse = async (shippingCity, productId) => {
-  const inventoryItems = await Inventory.find({ product: productId })
-    .populate("warehouse")
-    .lean();
-
-  if (!inventoryItems.length) return null;
-
-  // Tìm kho có location chứa tên thành phố (giả định location là chuỗi như "Hà Nội")
-  const nearest = inventoryItems.find(item => 
-    item.warehouse.location.toLowerCase().includes(shippingCity.toLowerCase())
-  );
-
-  // Nếu không tìm thấy kho khớp, trả về kho đầu tiên có sản phẩm
-  return nearest ? nearest.warehouse : inventoryItems[0].warehouse;
-};
 
 // Xóa đơn hàng
 router.delete("/:id", async (req, res) => {

@@ -65,19 +65,15 @@ const Login = () => {
 
     try {
       const response = await axios.post("http://localhost:5000/api/users/auth/login", formData);
-      console.log("Phản hồi từ API:", response.data);
       const { token, user } = response.data;
 
-      console.log("Dữ liệu người dùng từ phản hồi API:", user);
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
-      localStorage.setItem("userId", user._id);
-      console.log("Người dùng đã lưu vào localStorage:", JSON.parse(localStorage.getItem("user")));
 
-      if (["sales", "manager", "admin"].includes(user.role)) {
+      if (["admin", "sales", "manager"].includes(user.role)) {
         window.location.href = `http://localhost:3001/manage-products?token=${token}`;
       } else {
-        window.location.href = "/";
+        navigate("/");
       }
     } catch (error) {
       setError(error.response?.data?.message || "Đăng nhập thất bại!");
@@ -91,13 +87,11 @@ const Login = () => {
       });
 
       const { token, user } = res.data;
-      console.log("User data from Google login:", user);
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
       localStorage.setItem("userId", user._id);
-      console.log("User saved to localStorage:", JSON.parse(localStorage.getItem("user")));
 
-      if (["sales", "manager", "admin"].includes(user.role)) {
+      if (["admin", "sales", "manager"].includes(user.role)) {
         window.location.href = `http://localhost:3001/manage-products?token=${token}`;
       } else {
         window.location.href = "/";

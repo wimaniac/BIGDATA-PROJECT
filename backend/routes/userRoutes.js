@@ -34,25 +34,12 @@ router.get("/me", async (req, res) => {
     const token = req.headers.authorization?.split(" ")[1];
     if (!token) return res.status(401).json({ message: "No token provided" });
 
-    let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
-    } catch (jwtError) {
-      console.error("JWT Error:", jwtError.message);
-      return res.status(401).json({ message: "Token không hợp lệ!" });
-    }
-
-    const userId = decoded.id;
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return res.status(400).json({ message: "Invalid user ID in token" });
-    }
-
-    const user = await User.findById(userId).select("-password");
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id).select("-password");
     if (!user) return res.status(404).json({ message: "User not found" });
 
     res.json(user);
   } catch (err) {
-    console.error("Error in /me route:", err.stack);
     res.status(500).json({ message: "Server error!", error: err.message });
   }
 });

@@ -45,9 +45,9 @@ const OrderManagement = () => {
     const fetchOrders = async () => {
       if (!token || !["sales", "manager", "admin"].includes(userRole)) {
         alert("Bạn không có quyền truy cập trang này!");
-        navigate("/login");
-        return;
-      }
+        window.location.href = "http://localhost:3000/login";       
+         return;
+   }
 
       try {
         const response = await axios.get("http://localhost:5000/api/orders", {
@@ -66,10 +66,11 @@ const OrderManagement = () => {
   const handleStatusChange = async (orderId, newStatus) => {
     try {
       const response = await axios.put(
-        `http://localhost:5000/api/orders/${orderId}/status`, 
+        `http://localhost:5000/api/orders/${orderId}/status`,
         { status: newStatus },
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      console.log("Phản hồi từ API:", response.data);
       setOrders((prevOrders) =>
         prevOrders.map((order) =>
           order._id === orderId ? { ...order, status: response.data.status } : order
@@ -77,7 +78,7 @@ const OrderManagement = () => {
       );
       alert("Cập nhật trạng thái thành công!");
     } catch (error) {
-      console.error("Lỗi khi cập nhật trạng thái:", error);
+      console.error("Lỗi khi cập nhật trạng thái:", error.response?.data || error.message);
       alert("Có lỗi xảy ra khi cập nhật trạng thái!");
     }
   };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom"; // Thêm useLocation
 import {
   Drawer,
   List,
@@ -24,17 +24,56 @@ import {
   AccountCircle,
   RateReview,
   AttachMoney,
-  Warehouse as WarehouseIcon, // Thêm icon cho kho
+  Warehouse as WarehouseIcon,
 } from "@mui/icons-material";
 import axios from "axios";
 
 const Sidebar = () => {
   const navigate = useNavigate();
+  const location = useLocation(); // Lấy query string từ URL
   const [open, setOpen] = useState(true);
   const [anchorEl, setAnchorEl] = useState(null);
   const [user, setUser] = useState(null);
 
-  // Logic useEffect giữ nguyên...
+  useEffect(() => {
+    const fetchUserData = async () => {
+      // Lấy token từ query string
+      const params = new URLSearchParams(location.search);
+      const token = params.get("token");
+
+      // Kiểm tra localStorage trước
+      const storedUser = localStorage.getItem("user");
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
+        return;
+      }
+
+      // Nếu không có trong localStorage, dùng token từ query string để lấy thông tin
+      if (token) {
+        try {
+          const response = await axios.get("http://localhost:5000/api/users/me", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const userData = response.data;
+          setUser(userData);
+          // Lưu vào localStorage trên port 3001
+          localStorage.setItem("token", token);
+          localStorage.setItem("user", JSON.stringify(userData));
+          localStorage.setItem("userId", userData._id);
+          console.log("User data saved to localStorage on port 3001:", userData);
+        } catch (error) {
+          console.error("Lỗi khi lấy thông tin người dùng:", error);
+          // Nếu token không hợp lệ, chuyển về login
+          window.location.href = "http://localhost:3000/login";
+        }
+      } else {
+        // Không có token, chuyển về login
+        window.location.href = "http://localhost:3000/login";
+      }
+    };
+
+    fetchUserData();
+  }, [location]);
 
   const toggleSidebar = () => {
     setOpen(!open);
@@ -55,6 +94,7 @@ const Sidebar = () => {
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    localStorage.removeItem("userId");
     window.location.href = "http://localhost:3000/login";
     handleUserMenuClose();
   };
@@ -128,7 +168,7 @@ const Sidebar = () => {
               { text: "Đơn hàng", icon: <ShoppingCart />, path: "/manage-orders" },
               { text: "Giảm giá", icon: <LocalOffer />, path: "/manage-discounts" },
               { text: "Kho hàng", icon: <Storage />, path: "/manage-inventory" },
-              { text: "Quản lý kho", icon: <WarehouseIcon />, path: "/manage-warehouses" }, // Thêm mục mới
+              { text: "Quản lý kho", icon: <WarehouseIcon />, path: "/manage-warehouses" },
               { text: "Đánh giá", icon: <RateReview />, path: "/manage-reviews" },
               { text: "Doanh thu", icon: <AttachMoney />, path: "/manage-revenue" },
             ].map(({ text, icon, path }) => (
