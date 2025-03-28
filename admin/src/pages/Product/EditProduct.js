@@ -121,7 +121,7 @@ const EditProduct = () => {
       });
   
       alert("Cập nhật sản phẩm thành công!");
-      navigate("/products");
+      navigate("/manage-products");
     } catch (error) {
       console.error("❌ Lỗi khi cập nhật sản phẩm:", error);
       alert(error.response?.data?.message || "Cập nhật sản phẩm thất bại!");

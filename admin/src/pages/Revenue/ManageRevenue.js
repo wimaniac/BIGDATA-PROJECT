@@ -18,6 +18,8 @@ import {
   Select,
   MenuItem,
   Box,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import axios from "axios";
@@ -32,10 +34,10 @@ const RevenueContainer = styled(Container)(({ theme }) => ({
 }));
 
 const ManageRevenue = () => {
-  const [viewMode, setViewMode] = useState("category"); // "category" hoặc "time"
+  const [tabValue, setTabValue] = useState(0); // 0: Theo danh mục, 1: Theo thời gian
   const [revenues, setRevenues] = useState([]); // Doanh thu theo danh mục
-  const [timeRevenues, setTimeRevenues] = useState([]); // Doanh thu theo thời gian
-  const [period, setPeriod] = useState("month"); // "day", "month", "year"
+  const [timeRevenues, setTimeRevenues] = useState({ day: [], month: [], year: [] }); // Doanh thu theo thời gian
+  const [period, setPeriod] = useState("month"); // Chu kỳ thời gian: "day", "month", "year"
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [error, setError] = useState(null);
@@ -43,45 +45,66 @@ const ManageRevenue = () => {
   const token = localStorage.getItem("token");
 
   // Lấy dữ liệu doanh thu theo danh mục
-  const fetchCategoryRevenues = async () => {
-    try {
-      if (!token) throw new Error("Vui lòng đăng nhập!");
-      const response = await axios.get(
-        "http://localhost:5000/api/revenue-reports/category",
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setRevenues(response.data || []);
-      setError(null);
-    } catch (error) {
-      console.error("Lỗi khi lấy doanh thu theo danh mục:", error);
-      setError(error.response?.data?.message || error.message);
+const fetchCategoryRevenues = async () => {
+  try {
+    if (!token) {
+      setError("Vui lòng đăng nhập để xem báo cáo doanh thu!");
+      return;
     }
-  };
-
-  // Lấy dữ liệu doanh thu theo thời gian
+    console.log("Token gửi đi:", token);
+    const response = await axios.get("http://localhost:5000/api/revenue-reports/category", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    console.log("Dữ liệu nhận được:", response.data); // Debug response
+    setRevenues(response.data || []);
+    setError(null);
+  } catch (error) {
+    console.error("Lỗi khi lấy doanh thu theo danh mục:", error);
+    setError(
+      error.response?.data?.message || "Không thể tải dữ liệu doanh thu. Vui lòng kiểm tra lại!"
+    );
+  }
+};
+  // Lấy dữ liệu doanh thu theo thời gian cho tất cả chu kỳ
   const fetchTimeRevenues = async () => {
     try {
-      if (!token) throw new Error("Vui lòng đăng nhập!");
-      const response = await axios.get(
-        `http://localhost:5000/api/revenue-reports/time?period=${period}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+      if (!token) {
+        setError("Vui lòng đăng nhập để xem báo cáo doanh thu!");
+        return;
+      }
+      console.log("Token gửi đi:", token); // Debug token
+      const periods = ["day", "month", "year"];
+      const results = await Promise.all(
+        periods.map(async (p) => {
+          const response = await axios.get(
+            `http://localhost:5000/api/revenue-reports/time?period=${p}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          return { period: p, data: response.data || [] };
+        })
       );
-      setTimeRevenues(response.data || []);
+      const updatedTimeRevenues = results.reduce((acc, { period, data }) => {
+        acc[period] = data;
+        return acc;
+      }, {});
+      setTimeRevenues(updatedTimeRevenues);
       setError(null);
     } catch (error) {
       console.error("Lỗi khi lấy doanh thu theo thời gian:", error);
-      setError(error.response?.data?.message || error.message);
+      setError(
+        error.response?.data?.message || "Không thể tải dữ liệu doanh thu. Vui lòng kiểm tra lại!"
+      );
     }
   };
 
-  // Gọi API khi thay đổi viewMode hoặc period
+  // Gọi API khi thay đổi tab
   useEffect(() => {
-    if (viewMode === "category") {
+    if (tabValue === 0) {
       fetchCategoryRevenues();
     } else {
       fetchTimeRevenues();
     }
-  }, [viewMode, period]);
+  }, [tabValue]);
 
   // Xử lý phân trang
   const handleChangePage = (event, newPage) => {
@@ -101,14 +124,21 @@ const ManageRevenue = () => {
     }));
   };
 
+  // Thay đổi tab
+  const handleTabChange = (event, newValue) => {
+    setTabValue(newValue);
+    setPage(0); // Reset trang khi chuyển tab
+  };
+
   // Thay đổi chu kỳ thời gian
   const handlePeriodChange = (event) => {
     setPeriod(event.target.value);
   };
 
   // Chuẩn bị dữ liệu cho biểu đồ
-  const timeLabels = timeRevenues.map((item) => item.time);
-  const revenueData = timeRevenues.map((item) => item.revenue);
+  const currentTimeData = timeRevenues[period];
+  const timeLabels = currentTimeData.map((item) => item.time);
+  const revenueData = currentTimeData.map((item) => item.revenue);
 
   return (
     <RevenueContainer>
@@ -116,39 +146,17 @@ const ManageRevenue = () => {
         Quản lý Doanh Thu
       </Typography>
 
-      {/* Nút chuyển đổi chế độ xem và bộ lọc chu kỳ */}
-      <Box sx={{ display: "flex", gap: 2, marginBottom: 3 }}>
-        <Button
-          variant={viewMode === "category" ? "contained" : "outlined"}
-          color="primary"
-          onClick={() => setViewMode("category")}
-        >
-          Theo Danh Mục
-        </Button>
-        <Button
-          variant={viewMode === "time" ? "contained" : "outlined"}
-          color="primary"
-          onClick={() => setViewMode("time")}
-        >
-          Theo Thời Gian
-        </Button>
-        {viewMode === "time" && (
-          <FormControl sx={{ minWidth: 120 }}>
-            <InputLabel>Chu kỳ</InputLabel>
-            <Select value={period} onChange={handlePeriodChange}>
-              <MenuItem value="day">Ngày</MenuItem>
-              <MenuItem value="month">Tháng</MenuItem>
-              <MenuItem value="year">Năm</MenuItem>
-            </Select>
-          </FormControl>
-        )}
-      </Box>
+      {/* Tabs để chuyển đổi giữa các chế độ xem */}
+      <Tabs value={tabValue} onChange={handleTabChange} sx={{ mb: 3 }}>
+        <Tab label="Theo Danh Mục" />
+        <Tab label="Theo Thời Gian" />
+      </Tabs>
 
       {/* Hiển thị lỗi nếu có */}
       {error && <Typography color="error" sx={{ mb: 2 }}>{error}</Typography>}
 
       {/* Hiển thị dữ liệu */}
-      {viewMode === "category" ? (
+      {tabValue === 0 ? (
         revenues.length === 0 ? (
           <Typography>Không có dữ liệu doanh thu theo danh mục!</Typography>
         ) : (
@@ -157,8 +165,8 @@ const ManageRevenue = () => {
               <Table>
                 <TableHead>
                   <TableRow>
-                    <TableCell /> {/* Cột cho nút mở rộng */}
-                    <TableCell>STT</TableCell>
+                    <TableCell sx={{ width: 50 }} /> {/* Cột cho nút mở rộng */}
+                    <TableCell sx={{ width: 50 }}>STT</TableCell>
                     <TableCell>Tên Danh Mục</TableCell>
                     <TableCell align="right">Tổng Số Lượng Bán</TableCell>
                     <TableCell align="right">Tổng Doanh Thu (VNĐ)</TableCell>
@@ -236,34 +244,46 @@ const ManageRevenue = () => {
           </>
         )
       ) : (
-        timeRevenues.length === 0 ? (
-          <Typography>Không có dữ liệu doanh thu theo thời gian!</Typography>
-        ) : (
-          <LineChart
-            xAxis={[
-              {
-                data: timeLabels,
-                label: period === "day" ? "Ngày" : period === "month" ? "Tháng" : "Năm",
-                scaleType: "band", // Sử dụng band để hiển thị thời gian rời rạc
-              },
-            ]}
-            series={[
-              {
-                data: revenueData,
-                label: "Doanh Thu (VNĐ)",
-                color: "#1976d2",
-                valueFormatter: (value) => value.toLocaleString("vi-VN"),
-              },
-            ]}
-            height={400}
-            margin={{ top: 20, right: 30, bottom: 50, left: 70 }}
-            grid={{ vertical: true, horizontal: true }}
-            sx={{
-              "& .MuiLineElement-root": { strokeWidth: 2 },
-              "& .MuiChartsLegend-root": { fontSize: "14px" },
-            }}
-          />
-        )
+        <Box>
+          <Box sx={{ display: "flex", gap: 2, mb: 3 }}>
+            <FormControl sx={{ minWidth: 120 }}>
+              <InputLabel>Chu kỳ</InputLabel>
+              <Select value={period} onChange={handlePeriodChange}>
+                <MenuItem value="day">Ngày</MenuItem>
+                <MenuItem value="month">Tháng</MenuItem>
+                <MenuItem value="year">Năm</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+          {timeRevenues[period].length === 0 ? (
+            <Typography>Không có dữ liệu doanh thu theo {period}!</Typography>
+          ) : (
+            <LineChart
+              xAxis={[
+                {
+                  data: timeLabels,
+                  label: period === "day" ? "Ngày" : period === "month" ? "Tháng" : "Năm",
+                  scaleType: "band",
+                },
+              ]}
+              series={[
+                {
+                  data: revenueData,
+                  label: "Doanh Thu (VNĐ)",
+                  color: "#1976d2",
+                  valueFormatter: (value) => value.toLocaleString("vi-VN"),
+                },
+              ]}
+              height={400}
+              margin={{ top: 20, right: 30, bottom: 50, left: 70 }}
+              grid={{ vertical: true, horizontal: true }}
+              sx={{
+                "& .MuiLineElement-root": { strokeWidth: 2 },
+                "& .MuiChartsLegend-root": { fontSize: "14px" },
+              }}
+            />
+          )}
+        </Box>
       )}
     </RevenueContainer>
   );

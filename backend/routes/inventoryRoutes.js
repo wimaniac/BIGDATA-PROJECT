@@ -56,7 +56,12 @@ router.post("/", async (req, res) => {
       return res.status(404).json({ message: "Sản phẩm không tồn tại!" });
     }
 
-    // Không kiểm tra Product.stock nữa
+    // Kiểm tra trùng lặp: product và warehouse đã tồn tại chưa
+    const existingInventory = await Inventory.findOne({ product, warehouse });
+    if (existingInventory) {
+      return res.status(400).json({ message: "Tồn kho cho sản phẩm này tại kho đã tồn tại! Vui lòng chỉnh sửa thay vì tạo mới." });
+    }
+
     const inventory = new Inventory({
       product,
       quantity,
@@ -66,7 +71,6 @@ router.post("/", async (req, res) => {
     });
     const newInventory = await inventory.save();
 
-    // Ghi log để theo dõi
     console.log(`Đã thêm Inventory cho sản phẩm ${productDoc.name}: ${quantity}`);
 
     res.status(201).json(newInventory);
@@ -127,35 +131,7 @@ router.put("/:id", async (req, res) => {
     res.status(400).json({ message: err.message });
   }
 });
-// Adjust inventory item (chỉ sửa lỗi số lượng, không đồng bộ Product.stock)
-router.put("/adjust/:id", async (req, res) => {
-  const { quantity } = req.body;
 
-  try {
-    const inventoryItem = await Inventory.findById(req.params.id);
-    if (!inventoryItem) {
-      return res.status(404).json({ message: "Inventory item not found" });
-    }
-
-    const productDoc = await Product.findById(inventoryItem.product);
-    if (!productDoc) {
-      return res.status(404).json({ message: "Sản phẩm không tồn tại!" });
-    }
-
-    // Cập nhật quantity trong Inventory mà không ảnh hưởng Product.stock
-    inventoryItem.quantity = quantity;
-    const updatedInventoryItem = await inventoryItem.save();
-
-    // Không đồng bộ Product.stock ở đây
-    // Thay vào đó, ghi log để quản trị viên kiểm tra nếu cần
-    console.log(`Đã điều chỉnh Inventory ${inventoryItem._id} từ ${inventoryItem.quantity} thành ${quantity}`);
-
-    res.json({ message: "Đã điều chỉnh tồn kho", updatedInventoryItem });
-  } catch (err) {
-    console.error("Lỗi trong PUT /api/inventory/adjust/:id:", err);
-    res.status(400).json({ message: err.message });
-  }
-});
 // Delete inventory item
 router.delete("/:id", async (req, res) => {
   try {

@@ -17,8 +17,10 @@ import {
   IconButton,
   Paper,
   MenuItem,
+  TablePagination,
+  Box,
 } from "@mui/material";
-import { Edit, Delete, Adjust } from "@mui/icons-material"; // Thêm Adjust icon
+import { Edit, Delete } from "@mui/icons-material";
 import axios from "axios";
 
 const ManageInventory = () => {
@@ -37,6 +39,9 @@ const ManageInventory = () => {
     subCategory: "",
     warehouse: "",
   });
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(5);
+  const [searchTerm, setSearchTerm] = useState("");
   const token = localStorage.getItem("token");
 
   useEffect(() => {
@@ -208,66 +213,119 @@ const ManageInventory = () => {
     }
   };
 
-  const handleAdjust = async (id, currentQuantity) => {
-    const newQuantity = prompt("Nhập số lượng mới:", currentQuantity);
-    if (newQuantity === null || isNaN(newQuantity)) return;
-    try {
-      await axios.put(
-        `http://localhost:5000/api/inventory/adjust/${id}`,
-        { quantity: parseInt(newQuantity) },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      fetchInventoryItems();
-    } catch (error) {
-      console.error("Lỗi khi điều chỉnh:", error);
-      alert("Có lỗi khi điều chỉnh tồn kho!");
-    }
+  const handleChangePage = (event, newPage) => {
+    setPage(newPage);
   };
+
+  const handleChangeRowsPerPage = (event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
+  };
+
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value);
+    setPage(0); // Reset về trang đầu khi tìm kiếm
+  };
+
+  // Hàm chuyển đổi chuỗi có dấu sang không dấu
+  const removeAccents = (str) => {
+    return str
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+  };
+
+  // Gộp dữ liệu theo sản phẩm
+  const groupedInventory = products
+    .map((product) => {
+      const items = inventoryItems.filter((item) => item.product.toString() === product._id);
+      if (items.length === 0) return null;
+      const warehouseQuantities = items.reduce((acc, item) => {
+        const warehouse = warehouses.find((w) => w._id === item.warehouse?.toString());
+        acc[warehouse?.name || "Không xác định"] = {
+          quantity: item.quantity,
+          id: item._id,
+        };
+        return acc;
+      }, {});
+      return {
+        productName: product.name,
+        warehouseQuantities,
+      };
+    })
+    .filter((item) => item !== null);
+
+  // Lọc theo tìm kiếm
+  const filteredInventory = groupedInventory.filter((item) => {
+    const search = removeAccents(searchTerm.trim());
+    return search === "" || removeAccents(item.productName).includes(search);
+  });
 
   return (
     <Container sx={{ mt: 4, mb: 6 }}>
       <Typography variant="h4" sx={{ fontWeight: "bold", mb: 3 }}>
         Quản lý kho hàng
       </Typography>
-      <Button variant="contained" color="primary" onClick={() => handleOpen()} sx={{ mb: 2 }}>
-        Thêm sản phẩm vào kho
-      </Button>
+      <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
+        <Button variant="contained" color="primary" onClick={() => handleOpen()}>
+          Thêm sản phẩm vào kho
+        </Button>
+        <TextField
+          label="Tìm kiếm sản phẩm"
+          variant="outlined"
+          value={searchTerm}
+          onChange={handleSearchChange}
+          sx={{ flexGrow: 1 }}
+        />
+      </Box>
 
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
             <TableRow>
               <TableCell>Sản phẩm</TableCell>
-              <TableCell>Số lượng</TableCell>
-              <TableCell>Kho</TableCell>
+              {warehouses.map((warehouse) => (
+                <TableCell key={warehouse._id} align="center">{warehouse.name}</TableCell>
+              ))}
               <TableCell align="center">Hành động</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {inventoryItems.map((item) => {
-              const product = products.find((p) => p._id === item.product.toString());
-              const warehouse = warehouses.find((w) => w._id === item.warehouse?.toString());
-              return (
-                <TableRow key={item._id}>
-                  <TableCell>{product?.name || "Không xác định"}</TableCell>
-                  <TableCell>{item.quantity}</TableCell>
-                  <TableCell>{warehouse?.name || "Không xác định"}</TableCell>
+            {filteredInventory
+              .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+              .map((item) => (
+                <TableRow key={item.productName}>
+                  <TableCell>{item.productName}</TableCell>
+                  {warehouses.map((warehouse) => (
+                    <TableCell key={warehouse._id} align="center">
+                      {item.warehouseQuantities[warehouse.name]?.quantity || "-"}
+                    </TableCell>
+                  ))}
                   <TableCell align="center">
-                    <IconButton size="small" onClick={() => handleOpen(item)}>
-                      <Edit fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" onClick={() => handleAdjust(item._id, item.quantity)}>
-                      <Adjust fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" onClick={() => handleDelete(item._id)}>
-                      <Delete fontSize="small" />
-                    </IconButton>
+                    {Object.values(item.warehouseQuantities).map((data) => (
+                      <Box key={data.id} sx={{ display: "inline-block", mx: 0.5 }}>
+                        <IconButton size="small" onClick={() => handleOpen(inventoryItems.find(i => i._id === data.id))}>
+                          <Edit fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => handleDelete(data.id)}>
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ))}
                   </TableCell>
                 </TableRow>
-              );
-            })}
+              ))}
           </TableBody>
         </Table>
+        <TablePagination
+          rowsPerPageOptions={[5, 10, 25]}
+          component="div"
+          count={filteredInventory.length}
+          rowsPerPage={rowsPerPage}
+          page={page}
+          onPageChange={handleChangePage}
+          onRowsPerPageChange={handleChangeRowsPerPage}
+        />
       </TableContainer>
 
       <Dialog open={open} onClose={handleClose}>

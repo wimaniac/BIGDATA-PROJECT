@@ -14,10 +14,8 @@ import inventoryRoutes from "./routes/inventoryRoutes.js";
 import reviewRoutes from "./routes/reviewRoutes.js";
 import warehouseRoutes from "./routes/warehouseRoutes.js";
 import revenueRoutes from "./routes/revenueRoutes.js"; 
-import revenueByCategoryJob from "./jobs/revenueByCategoryJob.js";
-import revenueByTimeJob from "./jobs/revenueByTimeJob.js";
 import inventorySyncJob from "./jobs/inventorySyncJob.js";
-
+import { runRevenueJobs } from "./jobs/revenueJobs.js";
 dotenv.config();
 
 if (!process.env.CONNECT_STRING) {
@@ -75,9 +73,8 @@ const startServer = () => {
   
 
   console.log("🔄 Khởi động các job tracker...");
-  revenueByCategoryJob(); // Gọi hàm để kiểm tra ngay lập tức (tuỳ chọn)
-  revenueByTimeJob();     // Gọi hàm để kiểm tra ngay lập tức (tuỳ chọn)
-  inventorySyncJob();     // Gọi hàm để kiểm tra ngay lập tức (tuỳ chọn)
+  runRevenueJobs(); 
+  inventorySyncJob();     
 };
 
 connectDB();
