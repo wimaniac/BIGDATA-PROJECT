@@ -25,18 +25,7 @@ import { LineChart } from "@mui/x-charts/LineChart";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 
-// Hàm tính trung bình động (moving average)
-const calculateMovingAverage = (data, windowSize = 3) => {
-  const result = [];
-  for (let i = 0; i < data.length; i++) {
-    const start = Math.max(0, i - windowSize + 1);
-    const slice = data.slice(start, i + 1);
-    const avg = slice.reduce((sum, val) => sum + val, 0) / slice.length;
-    result.push(avg);
-  }
-  return result;
-};
-
+// Styled Container
 const RevenueContainer = styled(Container)(({ theme }) => ({
   marginTop: theme.spacing(4),
   marginBottom: theme.spacing(6),
@@ -50,18 +39,18 @@ const ManageRevenue = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [error, setError] = useState(null);
-  const [openRows, setOpenRows] = useState({});
+  const [openRows, setOpenRows] = useState({}); // Trạng thái mở/đóng cho từng danh mục
+  const token = localStorage.getItem("token");
 
   // Lấy dữ liệu doanh thu theo danh mục
   const fetchCategoryRevenues = async () => {
     try {
-      const token = localStorage.getItem("token");
       if (!token) throw new Error("Vui lòng đăng nhập!");
       const response = await axios.get(
-        "http://localhost:5000/api/orders/revenue-by-category",
+        "http://localhost:5000/api/revenue-reports/category",
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setRevenues(response.data);
+      setRevenues(response.data || []);
       setError(null);
     } catch (error) {
       console.error("Lỗi khi lấy doanh thu theo danh mục:", error);
@@ -72,13 +61,12 @@ const ManageRevenue = () => {
   // Lấy dữ liệu doanh thu theo thời gian
   const fetchTimeRevenues = async () => {
     try {
-      const token = localStorage.getItem("token");
       if (!token) throw new Error("Vui lòng đăng nhập!");
       const response = await axios.get(
-        `http://localhost:5000/api/orders/revenue-by-time?period=${period}`,
+        `http://localhost:5000/api/revenue-reports/time?period=${period}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setTimeRevenues(response.data);
+      setTimeRevenues(response.data || []);
       setError(null);
     } catch (error) {
       console.error("Lỗi khi lấy doanh thu theo thời gian:", error);
@@ -86,6 +74,7 @@ const ManageRevenue = () => {
     }
   };
 
+  // Gọi API khi thay đổi viewMode hoặc period
   useEffect(() => {
     if (viewMode === "category") {
       fetchCategoryRevenues();
@@ -94,6 +83,7 @@ const ManageRevenue = () => {
     }
   }, [viewMode, period]);
 
+  // Xử lý phân trang
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
   };
@@ -103,6 +93,7 @@ const ManageRevenue = () => {
     setPage(0);
   };
 
+  // Mở/đóng chi tiết sản phẩm trong danh mục
   const toggleRow = (categoryId) => {
     setOpenRows((prev) => ({
       ...prev,
@@ -110,6 +101,7 @@ const ManageRevenue = () => {
     }));
   };
 
+  // Thay đổi chu kỳ thời gian
   const handlePeriodChange = (event) => {
     setPeriod(event.target.value);
   };
@@ -117,13 +109,14 @@ const ManageRevenue = () => {
   // Chuẩn bị dữ liệu cho biểu đồ
   const timeLabels = timeRevenues.map((item) => item.time);
   const revenueData = timeRevenues.map((item) => item.revenue);
-  const movingAverageData = calculateMovingAverage(revenueData, 3); // Trung bình động 3 điểm
 
   return (
     <RevenueContainer>
-      <Typography variant="h4" gutterBottom>
+      <Typography variant="h4" gutterBottom sx={{ fontWeight: "bold" }}>
         Quản lý Doanh Thu
       </Typography>
+
+      {/* Nút chuyển đổi chế độ xem và bộ lọc chu kỳ */}
       <Box sx={{ display: "flex", gap: 2, marginBottom: 3 }}>
         <Button
           variant={viewMode === "category" ? "contained" : "outlined"}
@@ -151,18 +144,20 @@ const ManageRevenue = () => {
         )}
       </Box>
 
-      {error ? (
-        <Typography color="error">{error}</Typography>
-      ) : viewMode === "category" ? (
+      {/* Hiển thị lỗi nếu có */}
+      {error && <Typography color="error" sx={{ mb: 2 }}>{error}</Typography>}
+
+      {/* Hiển thị dữ liệu */}
+      {viewMode === "category" ? (
         revenues.length === 0 ? (
-          <Typography>Không có dữ liệu doanh thu!</Typography>
+          <Typography>Không có dữ liệu doanh thu theo danh mục!</Typography>
         ) : (
           <>
             <TableContainer component={Paper}>
               <Table>
                 <TableHead>
                   <TableRow>
-                    <TableCell />
+                    <TableCell /> {/* Cột cho nút mở rộng */}
                     <TableCell>STT</TableCell>
                     <TableCell>Tên Danh Mục</TableCell>
                     <TableCell align="right">Tổng Số Lượng Bán</TableCell>
@@ -196,7 +191,11 @@ const ManageRevenue = () => {
                         </TableRow>
                         <TableRow>
                           <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={5}>
-                            <Collapse in={openRows[revenue.categoryId]} timeout="auto" unmountOnExit>
+                            <Collapse
+                              in={openRows[revenue.categoryId]}
+                              timeout="auto"
+                              unmountOnExit
+                            >
                               <Table size="small">
                                 <TableHead>
                                   <TableRow>
@@ -238,7 +237,7 @@ const ManageRevenue = () => {
         )
       ) : (
         timeRevenues.length === 0 ? (
-          <Typography>Không có dữ liệu doanh thu!</Typography>
+          <Typography>Không có dữ liệu doanh thu theo thời gian!</Typography>
         ) : (
           <LineChart
             xAxis={[
@@ -250,19 +249,18 @@ const ManageRevenue = () => {
             ]}
             series={[
               {
-                data: timeRevenues.map((item) => item.revenue ?? 0),
+                data: revenueData,
                 label: "Doanh Thu (VNĐ)",
-                color: "#1976d2", // Màu xanh cho doanh thu
-                valueFormatter: (value) => (value ? value.toLocaleString("vi-VN") : "0"),
+                color: "#1976d2",
+                valueFormatter: (value) => value.toLocaleString("vi-VN"),
               },
-
             ]}
             height={400}
             margin={{ top: 20, right: 30, bottom: 50, left: 70 }}
-            grid={{ vertical: true, horizontal: true }} // Thêm lưới để dễ đọc
+            grid={{ vertical: true, horizontal: true }}
             sx={{
-              "& .MuiLineElement-root": { strokeWidth: 2 }, // Độ dày đường
-              "& .MuiChartsLegend-root": { fontSize: "14px" }, // Kích thước chữ chú thích
+              "& .MuiLineElement-root": { strokeWidth: 2 },
+              "& .MuiChartsLegend-root": { fontSize: "14px" },
             }}
           />
         )

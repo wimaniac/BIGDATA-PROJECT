@@ -66,7 +66,7 @@ const OrderManagement = () => {
   const handleStatusChange = async (orderId, newStatus) => {
     try {
       const response = await axios.put(
-        `http://localhost:5000/api/orders/${orderId}`,
+        `http://localhost:5000/api/orders/${orderId}/status`, 
         { status: newStatus },
         { headers: { Authorization: `Bearer ${token}` } }
       );

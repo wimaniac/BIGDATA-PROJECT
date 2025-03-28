@@ -187,13 +187,46 @@ const Cart = () => {
     setSelectedItems((prev) => prev.filter((id) => id !== productId));
   
     try {
-      // Sử dụng DELETE thay vì PUT để xóa sản phẩm
-      const response = await axios.delete("http://localhost:5000/api/cart/remove", {
-        data: { userId, productId }, // Gửi dữ liệu trong body của DELETE
+      await axios.delete("http://localhost:5000/api/cart/remove", {
+        data: { userId, productId },
       });
-      const updatedCart = response.data.cart || null;
-      setCart(updatedCart);
-      const totalItems = updatedCart?.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
+  
+      // Gọi lại API GET để lấy giỏ hàng đầy đủ
+      const response = await axios.get(`http://localhost:5000/api/cart/${userId}`);
+      const cartData = response.data;
+  
+      const updatedItems = await Promise.all(
+        cartData.items.map(async (item) => {
+          try {
+            const discountResponse = await axios.get(
+              `http://localhost:5000/api/discounts/apply/${item.productId._id}`
+            );
+            return {
+              ...item,
+              productId: {
+                ...item.productId,
+                originalPrice: discountResponse.data.originalPrice ?? item.productId.price,
+                discountedPrice: discountResponse.data.discountedPrice ?? item.productId.price,
+                stock: item.productId.stock,
+              },
+            };
+          } catch (error) {
+            console.error(`Lỗi lấy giảm giá cho sản phẩm ${item.productId._id}:`, error);
+            return {
+              ...item,
+              productId: {
+                ...item.productId,
+                originalPrice: item.productId.price,
+                discountedPrice: item.productId.price,
+                stock: item.productId.stock,
+              },
+            };
+          }
+        })
+      );
+  
+      setCart({ ...cartData, items: updatedItems });
+      const totalItems = updatedItems.reduce((sum, item) => sum + item.quantity, 0);
       window.dispatchEvent(new CustomEvent("cartUpdated", { detail: { cartCount: totalItems } }));
     } catch (error) {
       console.error("Lỗi xóa sản phẩm:", error);
@@ -274,7 +307,7 @@ const Cart = () => {
       <Grid container spacing={3}>
         <Grid item xs={12} md={8}>
           {cart.items.map((item) => (
-            <CartItemCard key={item.productId._id}>
+            <CartItemCard key={item.productId?._id || item._id}>
               <Checkbox
                 checked={selectedItems.includes(item.productId._id)}
                 onChange={() => handleSelectItem(item.productId._id)}

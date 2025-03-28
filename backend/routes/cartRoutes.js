@@ -116,18 +116,28 @@ router.put("/update", validateUser, validateProduct, async (req, res) => {
 
 // Xóa sản phẩm khỏi giỏ hàng
 router.delete("/remove", async (req, res) => {
-  const { userId } = req.body;
-  if (!userId) {
-    return res.status(400).json({ message: "Thiếu userId!" });
+  const { userId, productId } = req.body;
+  
+  if (!userId || !productId) {
+    return res.status(400).json({ message: "Thiếu userId hoặc productId!" });
   }
+
   try {
-    const cart = await Cart.findOneAndDelete({ userId });
+    const cart = await Cart.findOne({ userId });
     if (!cart) {
-      return res.status(404).json({ message: "Cart not found" });
+      return res.status(404).json({ message: "Giỏ hàng không tồn tại!" });
     }
-    res.json({ message: "Cart removed" });
+
+    // Lọc bỏ sản phẩm cần xóa
+    cart.items = cart.items.filter(item => item.productId.toString() !== productId);
+
+    await cart.save();
+
+    // Populate items.productId trước khi trả về
+    const updatedCart = await Cart.findOne({ userId }).populate("items.productId");
+    res.json({ message: "Đã xóa sản phẩm khỏi giỏ hàng!", cart: updatedCart });
   } catch (err) {
-    console.error("Lỗi khi xóa giỏ hàng:", err);
+    console.error("Lỗi khi xóa sản phẩm khỏi giỏ hàng:", err);
     res.status(500).json({ message: err.message });
   }
 });

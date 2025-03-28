@@ -1,15 +1,17 @@
 import express from "express";
 import Order from "../models/Order.js";
 import Cart from "../models/Cart.js";
-import Payment from "../models/Payment.js";
 import User from "../models/User.js";
 import Product from "../models/Product.js";
-import Category from "../models/Category.js"; 
-import mongoose from "mongoose";
-const router = express.Router();
-import jwt from "jsonwebtoken";
 import Inventory from "../models/Inventory.js";
 import Warehouse from "../models/Warehouse.js";
+import mongoose from "mongoose";
+import jwt from "jsonwebtoken";
+import axios from "axios";
+
+const router = express.Router();
+
+// Middleware kiểm tra vai trò
 const checkRole = async (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) {
@@ -28,153 +30,6 @@ const checkRole = async (req, res, next) => {
     res.status(401).json({ message: "Token không hợp lệ!" });
   }
 };
-// Route tính tổng doanh thu và số lượng sản phẩm bán theo danh mục
-router.get("/revenue-by-category", checkRole, async (req, res) => {
-  try {
-    // TaskTracker: Lấy tất cả đơn hàng có status "Đã giao"
-    const orders = await Order.find({ status: "Đã giao" })
-      .populate({
-        path: "products.product",
-        select: "name price parentCategory",
-        populate: { path: "parentCategory", select: "name" },
-      })
-      .lean();
-
-    console.log("Đơn hàng tìm thấy:", orders.length);
-    if (!orders || orders.length === 0) {
-      return res.status(200).json({ message: "Không có đơn hàng nào đã giao!", data: [] });
-    }
-
-    // Map: Tạo cặp key-value từ dữ liệu đơn hàng
-    const mappedData = orders.flatMap((order) => {
-      if (!order.products || !Array.isArray(order.products)) {
-        console.warn(`Đơn hàng ${order._id} không có sản phẩm hợp lệ`);
-        return [];
-      }
-      return order.products.map((item) => {
-        const product = item.product;
-        if (!product || !product.price || !product.parentCategory) {
-          console.warn(`Sản phẩm trong đơn hàng ${order._id} không hợp lệ:`, item);
-          return { key: "unknown", value: { quantity: item.quantity, revenue: 0, productName: "Unknown" } };
-        }
-        return {
-          key: product.parentCategory._id.toString(),
-          value: {
-            quantity: item.quantity,
-            revenue: item.quantity * product.price,
-            productName: product.name,
-            productId: product._id.toString(),
-          },
-        };
-      });
-    });
-
-    // Partition/Combine: Nhóm theo danh mục và tính tổng tạm thời
-    const combinedData = mappedData.reduce((acc, { key, value }) => {
-      if (!acc[key]) {
-        acc[key] = {
-          totalRevenue: 0,
-          totalSoldItems: 0,
-          products: {},
-        };
-      }
-      acc[key].totalRevenue += value.revenue;
-      acc[key].totalSoldItems += value.quantity;
-      if (!acc[key].products[value.productId]) {
-        acc[key].products[value.productId] = {
-          productName: value.productName,
-          quantity: 0,
-          revenue: 0,
-        };
-      }
-      acc[key].products[value.productId].quantity += value.quantity;
-      acc[key].products[value.productId].revenue += value.revenue;
-      return acc;
-    }, {});
-
-    console.log("Doanh thu và số lượng tạm thời theo danh mục:", combinedData);
-
-    // Reduce: Tạo kết quả cuối cùng với thông tin danh mục
-    const categoryRevenues = await Promise.all(
-      Object.entries(combinedData).map(async ([categoryId, data]) => {
-        let categoryName = "Unknown";
-        try {
-          const category = await Category.findById(categoryId);
-          categoryName = category ? category.name : "Unknown";
-        } catch (err) {
-          console.error(`Lỗi khi lấy danh mục ${categoryId}:`, err.message);
-        }
-        return {
-          categoryId,
-          categoryName,
-          totalRevenue: data.totalRevenue,
-          totalSoldItems: data.totalSoldItems,
-          products: Object.values(data.products), // Chuyển object thành mảng
-        };
-      })
-    );
-
-    console.log("Kết quả cuối cùng:", categoryRevenues);
-    res.json(categoryRevenues);
-  } catch (err) {
-    console.error("Lỗi khi tính doanh thu theo danh mục:", err.stack);
-    res.status(500).json({ message: "Lỗi server: " + err.message });
-  }
-});
-router.get("/revenue-by-time", checkRole, async (req, res) => {
-  try {
-    const { period } = req.query; // "day", "month", "year"
-    if (!["day", "month", "year"].includes(period)) {
-      return res.status(400).json({ message: "Period phải là 'day', 'month' hoặc 'year'" });
-    }
-
-    // TaskTracker: Lấy tất cả đơn hàng đã giao
-    const orders = await Order.find({ status: "Đã giao" })
-      .populate("products.product", "price")
-      .lean();
-
-    if (!orders || orders.length === 0) {
-      return res.status(200).json({ message: "Không có đơn hàng nào đã giao!", data: [] });
-    }
-
-    // Map: Tạo cặp key-value dựa trên thời gian
-    const mappedData = orders.map((order) => {
-      const date = new Date(order.createdAt);
-      let key;
-      if (period === "day") {
-        key = date.toISOString().split("T")[0]; // YYYY-MM-DD
-      } else if (period === "month") {
-        key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`; // YYYY-MM
-      } else {
-        key = date.getFullYear().toString(); // YYYY
-      }
-      const revenue = order.products.reduce(
-        (sum, item) => sum + item.quantity * (item.product?.price || 0),
-        0
-      );
-      return { key, value: revenue };
-    });
-
-    // Partition/Combine: Nhóm theo thời gian và tính tổng
-    const combinedData = mappedData.reduce((acc, { key, value }) => {
-      acc[key] = (acc[key] || 0) + value;
-      return acc;
-    }, {});
-
-    // Reduce: Chuyển thành mảng để dùng trong biểu đồ
-    const revenueByTime = Object.entries(combinedData).map(([time, revenue]) => ({
-      time,
-      revenue,
-    })).sort((a, b) => a.time.localeCompare(b.time)); // Sắp xếp theo thời gian
-
-    console.log(`Doanh thu theo ${period}:`, revenueByTime);
-    res.json(revenueByTime);
-  } catch (err) {
-    console.error("Lỗi khi tính doanh thu theo thời gian:", err.stack);
-    res.status(500).json({ message: "Lỗi server: " + err.message });
-  }
-});
-
 
 // Hàm tính khoảng cách (sử dụng OpenRouteService)
 async function calculateDistance(city1, city2) {
@@ -200,7 +55,8 @@ async function getCoordinates(city) {
   const { coordinates } = response.data.features[0].geometry;
   return { lng: coordinates[0], lat: coordinates[1] };
 }
-// Create a new order
+
+// Tạo đơn hàng mới
 router.post("/", async (req, res) => {
   const { user, products, totalAmount, shippingInfo, status } = req.body;
 
@@ -209,72 +65,54 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    // **Map Phase**: Thu thập dữ liệu từ các nguồn (warehouses, inventories)
-    // - Lấy danh sách tất cả kho (warehouses) và tồn kho (inventories) liên quan đến sản phẩm trong đơn hàng
-    // - Mục tiêu: Chuẩn bị dữ liệu đầu vào để xử lý song song
-    const warehouses = await Warehouse.find().lean(); // Lấy tất cả kho
+    // Lấy danh sách kho và tồn kho
+    const warehouses = await Warehouse.find().lean();
     const inventories = await Inventory.find({ product: { $in: products.map(p => p.product) } })
       .populate("warehouse")
-      .lean(); // Lấy tồn kho cho các sản phẩm trong đơn hàng
+      .lean();
 
-    // **Partition/Combine Phase**: Phân vùng dữ liệu theo khoảng cách địa lý
-    // - Tính khoảng cách từ địa chỉ khách hàng đến từng kho
-    // - Kết hợp dữ liệu kho với khoảng cách để chuẩn bị cho bước chọn kho tối ưu
+    // Tính khoảng cách và chọn kho gần nhất
     const userCity = shippingInfo.address.city;
     const warehouseDistances = await Promise.all(
       warehouses.map(async warehouse => {
-        const distance = await calculateDistance(userCity, warehouse.location); // Hàm giả định tính khoảng cách
+        const distance = await calculateDistance(userCity, warehouse.location);
         return { warehouse, distance };
       })
     );
 
-    // Sắp xếp kho theo khoảng cách (từ gần đến xa)
     warehouseDistances.sort((a, b) => a.distance - b.distance);
 
-    // **Region Phase**: Lọc và chọn kho khả dụng (kết quả tạm thời)
-    // - Duyệt qua từng kho theo thứ tự gần nhất để tìm kho có đủ tồn kho
-    // - Lưu trữ kho được chọn làm kết quả tạm thời (selectedWarehouse)
+    // Tìm kho có đủ tồn kho
     let selectedWarehouse = null;
     for (const { warehouse } of warehouseDistances) {
       const warehouseInventory = inventories.filter(
         inv => inv.warehouse._id.toString() === warehouse._id.toString()
-      ); // Lọc tồn kho theo kho hiện tại
+      );
       const hasEnoughStock = products.every(product => {
         const inv = warehouseInventory.find(i => i.product.toString() === product.product);
-        return inv && inv.quantity >= product.quantity; // Kiểm tra đủ hàng
+        return inv && inv.quantity >= product.quantity;
       });
 
       if (hasEnoughStock) {
         selectedWarehouse = warehouse;
-        break; // Thoát khi tìm thấy kho phù hợp
+        break;
       }
     }
 
-    // Validation: Nếu không tìm thấy kho nào đủ tồn kho
     if (!selectedWarehouse) {
       return res.status(400).json({ message: "Không có kho nào đủ tồn kho!" });
     }
 
-    // **Reduce Phase**: Cập nhật tồn kho và đồng bộ dữ liệu
-    // - Giảm số lượng tồn kho trong kho được chọn
-    // - Đồng bộ Product.stock với tổng tồn kho thực tế từ tất cả kho
+    // Cập nhật tồn kho
     for (const product of products) {
       const inventory = inventories.find(
         inv => inv.product.toString() === product.product && inv.warehouse._id.toString() === selectedWarehouse._id.toString()
       );
-      inventory.quantity -= product.quantity; // Giảm số lượng tồn kho
+      inventory.quantity -= product.quantity;
       await Inventory.findByIdAndUpdate(inventory._id, { quantity: inventory.quantity });
-
-      // Đồng bộ Product.stock
-      const totalStock = await Inventory.aggregate([
-        { $match: { product: new mongoose.Types.ObjectId(product.product) } },
-        { $group: { _id: "$product", total: { $sum: "$quantity" } } }
-      ]);
-      const newStock = totalStock[0]?.total || 0;
-      await Product.findByIdAndUpdate(product.product, { stock: newStock });
     }
 
-    // Tạo đơn hàng mới với kho đã chọn
+    // Tạo đơn hàng mới
     const order = new Order({
       user,
       products,
@@ -285,11 +123,10 @@ router.post("/", async (req, res) => {
     });
     const newOrder = await order.save();
 
-    // Xóa giỏ hàng sau khi đặt hàng thành công
+    // Xóa giỏ hàng
     const deletedCart = await Cart.findOneAndDelete({ userId: user });
     console.log("Giỏ hàng đã xóa:", deletedCart);
 
-    // Trả về kết quả cuối cùng
     res.status(201).json({
       ...newOrder.toJSON(),
       warehouse: selectedWarehouse,
@@ -299,7 +136,8 @@ router.post("/", async (req, res) => {
     res.status(400).json({ message: err.message });
   }
 });
-// Get all orders
+
+// Lấy tất cả đơn hàng
 router.get("/", checkRole, async (req, res) => {
   try {
     const orders = await Order.find()
@@ -310,7 +148,8 @@ router.get("/", checkRole, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
-// Get order by ID
+
+// Lấy đơn hàng theo ID
 router.get("/:id", async (req, res) => {
   try {
     const order = await Order.findById(req.params.id)
@@ -322,8 +161,8 @@ router.get("/:id", async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
-// Thêm vào orderRoutes.js
-// Route lấy đơn hàng của người dùng
+
+// Lấy đơn hàng của người dùng
 router.get("/user/:userId", async (req, res) => {
   const { userId } = req.params;
   const token = req.headers.authorization?.split(" ")[1];
@@ -333,48 +172,146 @@ router.get("/user/:userId", async (req, res) => {
   }
 
   try {
-    // Xác thực token và kiểm tra userId
-    console.log("Token nhận được:", token);
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key"); // Đảm bảo có JWT_SECRET
-    console.log("Token decoded:", decoded);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     if (decoded.id !== userId) {
       return res.status(403).json({ message: "Không có quyền truy cập!" });
     }
 
-    // Truy vấn đơn hàng
     const orders = await Order.find({ user: userId })
       .populate("products.product", "name price")
-      .lean(); // Thêm .lean() để tăng tốc độ nếu không cần Mongoose Document
-    console.log("Đơn hàng tìm thấy:", orders);
-
+      .lean();
     res.json(orders);
   } catch (err) {
-    console.error("Lỗi trong GET /user/:userId:", err.message); // Log chi tiết lỗi
-    console.error("Stack trace:", err.stack);
+    console.error("Lỗi trong GET /user/:userId:", err.message);
     res.status(500).json({ message: "Lỗi server: " + err.message });
   }
 });
-
-// Update order
-router.put("/:id", async (req, res) => {
+router.get("/revenue-reports/category", checkRole, async (req, res) => {
   try {
-    const updatedOrder = await Order.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
-    if (!updatedOrder)
-      return res.status(404).json({ message: "Order not found" });
-    res.json(updatedOrder);
+    const reports = await RevenueByCategoryReport.find().sort({ createdAt: -1 }).limit(1); // Lấy báo cáo mới nhất
+    res.json(reports[0]?.data || []);
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(500).json({ message: err.message });
   }
 });
 
-// Delete order
+// Lấy báo cáo doanh thu theo thời gian
+router.get("/revenue-reports/time", checkRole, async (req, res) => {
+  try {
+    const { period } = req.query;
+    if (!["day", "month", "year"].includes(period)) {
+      return res.status(400).json({ message: "Period phải là 'day', 'month' hoặc 'year'" });
+    }
+    const reports = await RevenueByTimeReport.find({ period }).sort({ createdAt: -1 }).limit(1); // Lấy báo cáo mới nhất
+    res.json(reports[0]?.data || []);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+// Lấy báo cáo doanh thu theo thời gian
+router.get("/revenue-reports/time", checkRole, async (req, res) => {
+  try {
+    const { period } = req.query;
+    if (!["day", "month", "year"].includes(period)) {
+      return res.status(400).json({ message: "Period phải là 'day', 'month' hoặc 'year'" });
+    }
+    const reports = await RevenueByTimeReport.find({ period }).sort({ createdAt: -1 }).limit(1); // Lấy báo cáo mới nhất
+    res.json(reports[0]?.data || []);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+router.put("/:id/status", async (req, res) => {
+  const { status } = req.body;
+
+  try {
+    const order = await Order.findById(req.params.id).populate("products.product").populate("user");
+    if (!order) return res.status(404).json({ message: "Không tìm thấy đơn hàng!" });
+
+    order.status = status;
+    await order.save();
+
+    // Xử lý tồn kho khi trạng thái là "Đã giao"
+    if (status === "Đã giao") {
+      const shippingCity = order.shippingInfo?.city || order.user.address.city;
+      if (!shippingCity) {
+        return res.status(400).json({ message: "Không xác định được thành phố giao hàng!" });
+      }
+
+      for (const item of order.products) {
+        const productId = item.product._id;
+        const quantityOrdered = item.quantity;
+
+        // Tìm kho gần nhất
+        const nearestWarehouse = await findNearestWarehouse(shippingCity, productId);
+        if (!nearestWarehouse) {
+          return res.status(400).json({ 
+            message: `Không tìm thấy kho chứa sản phẩm ${item.product.name}` 
+          });
+        }
+
+        // Tìm bản ghi Inventory tại kho gần nhất
+        const inventoryItem = await Inventory.findOne({
+          product: productId,
+          warehouse: nearestWarehouse._id,
+        });
+        if (!inventoryItem) {
+          return res.status(400).json({ 
+            message: `Sản phẩm ${item.product.name} không có trong kho ${nearestWarehouse.name}` 
+          });
+        }
+
+        // Kiểm tra và giảm số lượng
+        if (inventoryItem.quantity < quantityOrdered) {
+          return res.status(400).json({ 
+            message: `Kho ${nearestWarehouse.name} không đủ tồn kho cho ${item.product.name} (Còn: ${inventoryItem.quantity}, Cần: ${quantityOrdered})` 
+          });
+        }
+
+        inventoryItem.quantity -= quantityOrdered;
+        await inventoryItem.save();
+        console.log(`Đã giảm ${quantityOrdered} sản phẩm ${item.product.name} tại kho ${nearestWarehouse.name}`);
+
+        // Đồng bộ Product.stock
+        const totalStock = await Inventory.aggregate([
+          { $match: { product: new mongoose.Types.ObjectId(productId) } },
+          { $group: { _id: "$product", total: { $sum: "$quantity" } } }
+        ]);
+        const newStock = totalStock[0]?.total || 0;
+        await Product.findByIdAndUpdate(productId, { stock: newStock });
+        console.log(`Đã đồng bộ stock cho ${item.product.name}: ${item.product.stock} -> ${newStock}`);
+      }
+    }
+
+    res.json(order);
+  } catch (err) {
+    console.error("Lỗi khi cập nhật trạng thái đơn hàng:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Hàm tìm kho gần nhất dựa trên thành phố
+const findNearestWarehouse = async (shippingCity, productId) => {
+  const inventoryItems = await Inventory.find({ product: productId })
+    .populate("warehouse")
+    .lean();
+
+  if (!inventoryItems.length) return null;
+
+  // Tìm kho có location chứa tên thành phố (giả định location là chuỗi như "Hà Nội")
+  const nearest = inventoryItems.find(item => 
+    item.warehouse.location.toLowerCase().includes(shippingCity.toLowerCase())
+  );
+
+  // Nếu không tìm thấy kho khớp, trả về kho đầu tiên có sản phẩm
+  return nearest ? nearest.warehouse : inventoryItems[0].warehouse;
+};
+
+// Xóa đơn hàng
 router.delete("/:id", async (req, res) => {
   try {
     const deletedOrder = await Order.findByIdAndDelete(req.params.id);
-    if (!deletedOrder)
-      return res.status(404).json({ message: "Order not found" });
+    if (!deletedOrder) return res.status(404).json({ message: "Order not found" });
     res.json({ message: "Order deleted" });
   } catch (err) {
     res.status(500).json({ message: err.message });

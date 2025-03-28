@@ -17,7 +17,7 @@ import {
   IconButton,
   Paper,
 } from "@mui/material";
-import { Edit, Delete } from "@mui/icons-material";
+import { Edit, Delete, Add } from "@mui/icons-material";
 import axios from "axios";
 
 const ManageWarehouses = () => {
@@ -26,9 +26,10 @@ const ManageWarehouses = () => {
   const [editMode, setEditMode] = useState(false);
   const [currentWarehouse, setCurrentWarehouse] = useState({
     name: "",
-    location: "",
+    location: { street: "", ward: "", district: "", city: "", country: "Vietnam" },
     capacity: "",
   });
+
   const token = localStorage.getItem("token");
 
   useEffect(() => {
@@ -46,25 +47,40 @@ const ManageWarehouses = () => {
     }
   };
 
-  const handleOpen = (warehouse = { name: "", location: "", capacity: "" }) => {
-    setCurrentWarehouse(warehouse);
+  const handleOpen = (warehouse = { name: "", location: {}, capacity: "" }) => {
+    setCurrentWarehouse(warehouse._id ? warehouse : { 
+      name: "", 
+      location: { street: "", ward: "", district: "", city: "", country: "Vietnam" }, 
+      capacity: "" 
+    });
     setEditMode(!!warehouse._id);
     setOpen(true);
   };
 
   const handleClose = () => {
     setOpen(false);
-    setCurrentWarehouse({ name: "", location: "", capacity: "" });
+    setCurrentWarehouse({ name: "", location: {}, capacity: "" });
   };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setCurrentWarehouse((prev) => ({ ...prev, [name]: value }));
+    setCurrentWarehouse((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleLocationChange = (e) => {
+    const { name, value } = e.target;
+    setCurrentWarehouse((prev) => ({
+      ...prev,
+      location: { ...prev.location, [name]: value },
+    }));
   };
 
   const handleSave = async () => {
-    if (!currentWarehouse.name) {
-      alert("Tên kho là bắt buộc!");
+    if (!currentWarehouse.name || !currentWarehouse.location.city) {
+      alert("Tên kho và Thành phố là bắt buộc!");
       return;
     }
 
@@ -90,7 +106,7 @@ const ManageWarehouses = () => {
       handleClose();
     } catch (error) {
       console.error("Lỗi khi lưu kho:", error);
-      alert("Có lỗi xảy ra khi lưu kho!");
+      alert(error.response?.data?.message || "Có lỗi xảy ra khi lưu kho!");
     }
   };
 
@@ -110,34 +126,42 @@ const ManageWarehouses = () => {
 
   return (
     <Container sx={{ mt: 4, mb: 6 }}>
-      <Typography variant="h4" sx={{ fontWeight: "bold", mb: 3 }}>
+      <Typography variant="h4" sx={{ fontWeight: "bold", mb: 3, textAlign: "center" }}>
         Quản lý kho hàng
       </Typography>
-      <Button variant="contained" color="primary" onClick={() => handleOpen()} sx={{ mb: 2 }}>
+      <Button
+        variant="contained"
+        color="primary"
+        startIcon={<Add />}
+        onClick={() => handleOpen()}
+        sx={{ mb: 2 }}
+      >
         Thêm kho mới
       </Button>
 
       <TableContainer component={Paper}>
         <Table>
-          <TableHead>
+          <TableHead sx={{ backgroundColor: "#1976d2" }}>
             <TableRow>
-              <TableCell>Tên kho</TableCell>
-              <TableCell>Vị trí</TableCell>
-              <TableCell>Sức chứa</TableCell>
-              <TableCell>Hành động</TableCell>
+              <TableCell sx={{ color: "#fff", fontWeight: "bold" }}>Tên kho</TableCell>
+              <TableCell sx={{ color: "#fff", fontWeight: "bold" }}>Vị trí</TableCell>
+              <TableCell sx={{ color: "#fff", fontWeight: "bold" }}>Sức chứa</TableCell>
+              <TableCell sx={{ color: "#fff", fontWeight: "bold" }}>Hành động</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {warehouses.map((warehouse) => (
               <TableRow key={warehouse._id}>
                 <TableCell>{warehouse.name}</TableCell>
-                <TableCell>{warehouse.location || "Không xác định"}</TableCell>
+                <TableCell>
+                  {warehouse.location.street}, {warehouse.location.ward}, {warehouse.location.district}, {warehouse.location.city}
+                </TableCell>
                 <TableCell>{warehouse.capacity || "Không giới hạn"}</TableCell>
                 <TableCell>
-                  <IconButton onClick={() => handleOpen(warehouse)}>
+                  <IconButton onClick={() => handleOpen(warehouse)} color="primary">
                     <Edit />
                   </IconButton>
-                  <IconButton onClick={() => handleDelete(warehouse._id)}>
+                  <IconButton onClick={() => handleDelete(warehouse._id)} color="error">
                     <Delete />
                   </IconButton>
                 </TableCell>
@@ -161,12 +185,37 @@ const ManageWarehouses = () => {
             required
           />
           <TextField
-            label="Vị trí"
-            name="location"
-            value={currentWarehouse.location}
-            onChange={handleInputChange}
+            label="Số nhà, tên đường"
+            name="street"
+            value={currentWarehouse.location.street}
+            onChange={handleLocationChange}
             fullWidth
             margin="normal"
+          />
+          <TextField
+            label="Phường, Xã"
+            name="ward"
+            value={currentWarehouse.location.ward}
+            onChange={handleLocationChange}
+            fullWidth
+            margin="normal"
+          />
+          <TextField
+            label="Quận, Huyện"
+            name="district"
+            value={currentWarehouse.location.district}
+            onChange={handleLocationChange}
+            fullWidth
+            margin="normal"
+          />
+          <TextField
+            label="Thành phố"
+            name="city"
+            value={currentWarehouse.location.city}
+            onChange={handleLocationChange}
+            fullWidth
+            margin="normal"
+            required
           />
           <TextField
             label="Sức chứa"

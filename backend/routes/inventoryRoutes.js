@@ -38,7 +38,6 @@ router.get("/category/:categoryId", async (req, res) => {
   }
 });
 
-// Create a new inventory item
 router.post("/", async (req, res) => {
   console.log("Dữ liệu nhận được từ frontend:", req.body);
   const { product, quantity, price, category, warehouse } = req.body;
@@ -52,26 +51,12 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ message: "ID sản phẩm không hợp lệ!" });
     }
 
-    console.log("Tìm sản phẩm với ID:", product);
     const productDoc = await Product.findById(product);
     if (!productDoc) {
-      console.log("Không tìm thấy sản phẩm với ID:", product);
       return res.status(404).json({ message: "Sản phẩm không tồn tại!" });
     }
-    console.log("Sản phẩm tìm thấy:", productDoc);
 
-    const currentInventory = await Inventory.aggregate([
-      { $match: { product: new mongoose.Types.ObjectId(product) } },
-      { $group: { _id: "$product", total: { $sum: "$quantity" } } }
-    ]);
-    const currentTotal = currentInventory[0]?.total || 0;
-
-    if (currentTotal + quantity > productDoc.stock) {
-      return res.status(400).json({
-        message: `Không thể thêm ${quantity}. Tổng tồn kho (${currentTotal + quantity}) vượt quá số lượng tối đa ban đầu (${productDoc.stock})!`
-      });
-    }
-
+    // Không kiểm tra Product.stock nữa
     const inventory = new Inventory({
       product,
       quantity,
@@ -81,7 +66,9 @@ router.post("/", async (req, res) => {
     });
     const newInventory = await inventory.save();
 
-    // Không cập nhật product.stock trong POST
+    // Ghi log để theo dõi
+    console.log(`Đã thêm Inventory cho sản phẩm ${productDoc.name}: ${quantity}`);
+
     res.status(201).json(newInventory);
   } catch (err) {
     console.error("Lỗi trong POST /api/inventory:", err);

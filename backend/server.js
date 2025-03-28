@@ -13,6 +13,11 @@ import discountRoutes from "./routes/discountRoutes.js";
 import inventoryRoutes from "./routes/inventoryRoutes.js";
 import reviewRoutes from "./routes/reviewRoutes.js";
 import warehouseRoutes from "./routes/warehouseRoutes.js";
+import revenueRoutes from "./routes/revenueRoutes.js"; 
+import revenueByCategoryJob from "./jobs/revenueByCategoryJob.js";
+import revenueByTimeJob from "./jobs/revenueByTimeJob.js";
+import inventorySyncJob from "./jobs/inventorySyncJob.js";
+
 dotenv.config();
 
 if (!process.env.CONNECT_STRING) {
@@ -64,9 +69,15 @@ const startServer = () => {
   app.use("/api/inventory", inventoryRoutes);
   app.use("/api/reviews", reviewRoutes);
   app.use("/api/warehouses", warehouseRoutes);
+  app.use("/api/revenue-reports", revenueRoutes);
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => console.log(`🚀 Máy chủ đang chạy trên cổng ${PORT}`));
-  console.log("JWT_SECRET:", process.env.JWT_SECRET);
+  
+
+  console.log("🔄 Khởi động các job tracker...");
+  revenueByCategoryJob(); // Gọi hàm để kiểm tra ngay lập tức (tuỳ chọn)
+  revenueByTimeJob();     // Gọi hàm để kiểm tra ngay lập tức (tuỳ chọn)
+  inventorySyncJob();     // Gọi hàm để kiểm tra ngay lập tức (tuỳ chọn)
 };
 
 connectDB();

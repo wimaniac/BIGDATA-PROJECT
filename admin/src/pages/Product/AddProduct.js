@@ -261,7 +261,7 @@ const handleSubmit = async (e) => {
     });
 
     console.log("✅ Sản phẩm đã được tạo:", response.data);
-    navigate("/products");
+    navigate("/manage-products");
 
   } catch (error) {
     console.error("❌ Lỗi khi thêm sản phẩm:", error.response?.data || error);
@@ -621,7 +621,7 @@ const handleSubmit = async (e) => {
             <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
               <Button
                 variant="outlined"
-                onClick={() => navigate("/products")}
+                onClick={() => navigate("/manage-products")}
                 disabled={loading}
               >
                 Hủy
