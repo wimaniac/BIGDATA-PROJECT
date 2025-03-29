@@ -2,6 +2,7 @@ import express from "express";
 import Inventory from "../models/Inventory.js";
 import mongoose from "mongoose";
 import Product from "../models/Product.js";
+
 const router = express.Router();
 
 // Get all inventory items
@@ -38,6 +39,7 @@ router.get("/category/:categoryId", async (req, res) => {
   }
 });
 
+// Thêm mới tồn kho (POST)
 router.post("/", async (req, res) => {
   console.log("Dữ liệu nhận được từ frontend:", req.body);
   const { product, quantity, price, category, warehouse } = req.body;
@@ -56,7 +58,6 @@ router.post("/", async (req, res) => {
       return res.status(404).json({ message: "Sản phẩm không tồn tại!" });
     }
 
-    // Kiểm tra trùng lặp: product và warehouse đã tồn tại chưa
     const existingInventory = await Inventory.findOne({ product, warehouse });
     if (existingInventory) {
       return res.status(400).json({ message: "Tồn kho cho sản phẩm này tại kho đã tồn tại! Vui lòng chỉnh sửa thay vì tạo mới." });
@@ -72,7 +73,6 @@ router.post("/", async (req, res) => {
     const newInventory = await inventory.save();
 
     console.log(`Đã thêm Inventory cho sản phẩm ${productDoc.name}: ${quantity}`);
-
     res.status(201).json(newInventory);
   } catch (err) {
     console.error("Lỗi trong POST /api/inventory:", err);
@@ -80,7 +80,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Update inventory item
+// Chỉnh sửa tồn kho (PUT) - Không đồng bộ stock
 router.put("/:id", async (req, res) => {
   console.log("Dữ liệu nhận được từ frontend:", req.body);
   const { quantity, product } = req.body;
@@ -91,40 +91,11 @@ router.put("/:id", async (req, res) => {
       return res.status(404).json({ message: "Inventory item not found" });
     }
 
-    const productId = product || inventoryItem.product;
-    const productDoc = await Product.findById(productId);
-    if (!productDoc) {
-      return res.status(404).json({ message: "Sản phẩm không tồn tại!" });
-    }
-
-    // Tính tổng hiện tại và thay đổi
-    const currentInventory = await Inventory.aggregate([
-      { $match: { product: new mongoose.Types.ObjectId(productId) } },
-      { $group: { _id: "$product", total: { $sum: "$quantity" } } }
-    ]);
-    const currentTotal = currentInventory[0]?.total || 0;
-    const diff = quantity - inventoryItem.quantity;
-    const newTotal = currentTotal + diff;
-
-    // Không chặn, chỉ cảnh báo nếu vượt
-    if (newTotal > productDoc.stock) {
-      console.warn(`Tổng tồn kho mới (${newTotal}) vượt quá stock ban đầu (${productDoc.stock}). Đang đồng bộ lại stock.`);
-    }
-
     const updatedInventoryItem = await Inventory.findByIdAndUpdate(
       req.params.id,
       req.body,
       { new: true }
     );
-
-    // Đồng bộ Product.stock với tổng thực tế
-    const totalStock = await Inventory.aggregate([
-      { $match: { product: new mongoose.Types.ObjectId(productId) } },
-      { $group: { _id: "$product", total: { $sum: "$quantity" } } }
-    ]);
-    const newStock = totalStock[0]?.total || 0;
-    await Product.findByIdAndUpdate(productId, { stock: newStock });
-
     res.json(updatedInventoryItem);
   } catch (err) {
     console.error("Lỗi trong PUT /api/inventory/:id:", err);
@@ -132,22 +103,12 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-// Delete inventory item
+// Xóa tồn kho (DELETE) - Không đồng bộ stock
 router.delete("/:id", async (req, res) => {
   try {
     const deletedInventoryItem = await Inventory.findByIdAndDelete(req.params.id);
     if (!deletedInventoryItem)
       return res.status(404).json({ message: "Inventory item not found" });
-
-    // Cập nhật product.stock sau khi xóa
-    const productId = deletedInventoryItem.product;
-    const totalStock = await Inventory.aggregate([
-      { $match: { product: new mongoose.Types.ObjectId(productId) } },
-      { $group: { _id: "$product", total: { $sum: "$quantity" } } }
-    ]);
-    const newStock = totalStock[0]?.total || 0;
-    await Product.findByIdAndUpdate(productId, { stock: newStock });
-
     res.json({ message: "Inventory item deleted" });
   } catch (err) {
     console.error("Lỗi trong DELETE /api/inventory/:id:", err);

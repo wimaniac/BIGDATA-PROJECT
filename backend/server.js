@@ -15,7 +15,7 @@ import reviewRoutes from "./routes/reviewRoutes.js";
 import warehouseRoutes from "./routes/warehouseRoutes.js";
 import revenueRoutes from "./routes/revenueRoutes.js"; 
 import inventorySyncJob from "./jobs/inventorySyncJob.js";
-import { runRevenueJobs } from "./jobs/revenueJobs.js";
+import calculateRevenue from "./jobs/revenueJobs.js";
 dotenv.config();
 
 if (!process.env.CONNECT_STRING) {
@@ -73,7 +73,7 @@ const startServer = () => {
   
 
   console.log("🔄 Khởi động các job tracker...");
-  runRevenueJobs(); 
+  calculateRevenue(); 
   inventorySyncJob();     
 };
 
