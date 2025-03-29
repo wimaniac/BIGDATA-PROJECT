@@ -13,9 +13,11 @@ import discountRoutes from "./routes/discountRoutes.js";
 import inventoryRoutes from "./routes/inventoryRoutes.js";
 import reviewRoutes from "./routes/reviewRoutes.js";
 import warehouseRoutes from "./routes/warehouseRoutes.js";
-import revenueRoutes from "./routes/revenueRoutes.js"; 
-import inventorySyncJob from "./jobs/inventorySyncJob.js";
-import calculateRevenue from "./jobs/revenueJobs.js";
+import revenueRoutes from "./routes/revenueRoutes.js";
+
+import { InventoryJob , scheduleInventoryJob } from "./jobs/inventoryJob.js";
+import { RevenueJob, scheduleRevenueJob } from "./jobs/revenueJobs.js";
+import { ProductJob, scheduleProductJob } from "./jobs/productJob.js";
 dotenv.config();
 
 if (!process.env.CONNECT_STRING) {
@@ -71,10 +73,16 @@ const startServer = () => {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => console.log(`🚀 Máy chủ đang chạy trên cổng ${PORT}`));
   
-
-  console.log("🔄 Khởi động các job tracker...");
-  calculateRevenue(); 
-  inventorySyncJob();     
+  console.log("RADAR_API_KEY from .env:", process.env.RADAR_API_KEY);
+// Gọi InventoryJob
+  InventoryJob (); 
+  scheduleInventoryJob();
+// Gọi RevenueJob
+  RevenueJob();
+  scheduleRevenueJob();
+// Gọi ProductJob
+  ProductJob();
+  scheduleProductJob();
 };
 
 connectDB();

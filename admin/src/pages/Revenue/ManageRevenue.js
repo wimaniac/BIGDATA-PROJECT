@@ -45,26 +45,27 @@ const ManageRevenue = () => {
   const token = localStorage.getItem("token");
 
   // Lấy dữ liệu doanh thu theo danh mục
-const fetchCategoryRevenues = async () => {
-  try {
-    if (!token) {
-      setError("Vui lòng đăng nhập để xem báo cáo doanh thu!");
-      return;
+  const fetchCategoryRevenues = async () => {
+    try {
+      if (!token) {
+        setError("Vui lòng đăng nhập để xem báo cáo doanh thu!");
+        return;
+      }
+      const response = await axios.get("http://localhost:5000/api/revenue-reports/category", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      console.log("Doanh thu theo danh mục:", response.data); // Debug dữ liệu
+      const data = Array.isArray(response.data) ? response.data : [];
+      setRevenues(data);
+      setError(null);
+    } catch (error) {
+      console.error("Lỗi khi lấy doanh thu theo danh mục:", error);
+      setError(
+        error.response?.data?.message || "Không thể tải dữ liệu doanh thu theo danh mục!"
+      );
+      setRevenues([]);
     }
-    console.log("Token gửi đi:", token);
-    const response = await axios.get("http://localhost:5000/api/revenue-reports/category", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    console.log("Dữ liệu nhận được:", response.data); // Debug response
-    setRevenues(response.data || []);
-    setError(null);
-  } catch (error) {
-    console.error("Lỗi khi lấy doanh thu theo danh mục:", error);
-    setError(
-      error.response?.data?.message || "Không thể tải dữ liệu doanh thu. Vui lòng kiểm tra lại!"
-    );
-  }
-};
+  };
   // Lấy dữ liệu doanh thu theo thời gian cho tất cả chu kỳ
   const fetchTimeRevenues = async () => {
     try {
@@ -72,7 +73,6 @@ const fetchCategoryRevenues = async () => {
         setError("Vui lòng đăng nhập để xem báo cáo doanh thu!");
         return;
       }
-      console.log("Token gửi đi:", token); // Debug token
       const periods = ["day", "month", "year"];
       const results = await Promise.all(
         periods.map(async (p) => {
@@ -80,7 +80,8 @@ const fetchCategoryRevenues = async () => {
             `http://localhost:5000/api/revenue-reports/time?period=${p}`,
             { headers: { Authorization: `Bearer ${token}` } }
           );
-          return { period: p, data: response.data || [] };
+          console.log(`Doanh thu theo ${p}:`, response.data); // Debug dữ liệu
+          return { period: p, data: Array.isArray(response.data) ? response.data : [] };
         })
       );
       const updatedTimeRevenues = results.reduce((acc, { period, data }) => {
@@ -92,8 +93,9 @@ const fetchCategoryRevenues = async () => {
     } catch (error) {
       console.error("Lỗi khi lấy doanh thu theo thời gian:", error);
       setError(
-        error.response?.data?.message || "Không thể tải dữ liệu doanh thu. Vui lòng kiểm tra lại!"
+        error.response?.data?.message || "Không thể tải dữ liệu doanh thu theo thời gian!"
       );
+      setTimeRevenues({ day: [], month: [], year: [] });
     }
   };
 
@@ -157,7 +159,7 @@ const fetchCategoryRevenues = async () => {
 
       {/* Hiển thị dữ liệu */}
       {tabValue === 0 ? (
-        revenues.length === 0 ? (
+        !Array.isArray(revenues) || revenues.length === 0 ? (
           <Typography>Không có dữ liệu doanh thu theo danh mục!</Typography>
         ) : (
           <>

@@ -27,7 +27,6 @@ import axios from "axios";
 import { Link } from "react-router-dom";
 import logo from "../assets/logo.jpg";
 
-// Styled components (giữ nguyên như cũ)
 const StyledAppBar = styled(AppBar)(({ theme }) => ({
   backgroundColor: "white",
   color: "black",
@@ -137,69 +136,58 @@ const Header = () => {
   const [searchValue, setSearchValue] = useState("");
   const [user, setUser] = useState(null);
   const [anchorUserEl, setAnchorUserEl] = useState(null);
-  const [cartCount, setCartCount] = useState(0); // Thêm state cho số lượng giỏ hàng
+  const [cartCount, setCartCount] = useState(0);
+  const token = localStorage.getItem("token"); // Lấy token ngoài useEffect để theo dõi thay đổi
+
+  const fetchUser = async () => {
+    const userData = JSON.parse(localStorage.getItem("user"));
+    if (token) {
+      try {
+        const response = await axios.get("http://localhost:5000/api/users/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setUser(response.data);
+        localStorage.setItem("user", JSON.stringify(response.data));
+        localStorage.setItem("userId", response.data._id);
+      } catch (error) {
+        console.error("Token invalid or expired:", error);
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        localStorage.removeItem("userId");
+        setUser(null);
+      }
+    } else {
+      setUser(userData || null);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const response = await axios.get("http://localhost:5000/api/categories/parents");
+      setParentCategories(response.data);
+    } catch (error) {
+      console.error("Error fetching parent categories:", error);
+    }
+  };
+
+  const fetchCartCount = async () => {
+    const userId = localStorage.getItem("userId");
+    if (userId && token) {
+      try {
+        const response = await axios.get(`http://localhost:5000/api/cart/${userId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const cartItems = response.data?.items || [];
+        const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+        setCartCount(totalItems);
+      } catch (error) {
+        console.error("Error fetching cart count:", error);
+        setCartCount(0);
+      }
+    }
+  };
 
   useEffect(() => {
-    const fetchUser = async () => {
-      const userData = JSON.parse(localStorage.getItem("user"));
-      const token = localStorage.getItem("token");
-
-      if (token) {
-        try {
-          const response = await axios.get(
-            "http://localhost:5000/api/users/me",
-            {
-              headers: { Authorization: `Bearer ${token}` },
-            }
-          );
-          setUser(response.data);
-          localStorage.setItem("user", JSON.stringify(response.data));
-        } catch (error) {
-          console.error("Token invalid or expired:", error);
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
-          setUser(null);
-        }
-      } else {
-        setUser(userData || null);
-      }
-    };
-
-    const fetchCategories = async () => {
-      try {
-        const response = await axios.get(
-          "http://localhost:5000/api/categories/parents"
-        );
-        setParentCategories(response.data);
-      } catch (error) {
-        console.error("Error fetching parent categories:", error);
-      }
-    };
-
-    const fetchCartCount = async () => {
-      const userId = localStorage.getItem("userId");
-      const token = localStorage.getItem("token");
-      if (userId && token) {
-        try {
-          const response = await axios.get(
-            `http://localhost:5000/api/cart/${userId}`,
-            {
-              headers: { Authorization: `Bearer ${token}` },
-            }
-          );
-          const cartItems = response.data?.items || [];
-          const totalItems = cartItems.reduce(
-            (sum, item) => sum + item.quantity,
-            0
-          );
-          setCartCount(totalItems);
-        } catch (error) {
-          console.error("Error fetching cart count:", error);
-          setCartCount(0); // Nếu lỗi, đặt số lượng về 0
-        }
-      }
-    };
-
     fetchUser();
     fetchCategories();
     fetchCartCount();
@@ -213,7 +201,7 @@ const Header = () => {
       window.removeEventListener("userUpdated", fetchUser);
       window.removeEventListener("cartUpdated", fetchCartCount);
     };
-  }, []);
+  }, [token]); // Thêm token vào dependency array
 
   const fetchChildCategories = async (parentId) => {
     try {
@@ -270,8 +258,9 @@ const Header = () => {
   const handleLogout = () => {
     localStorage.removeItem("user");
     localStorage.removeItem("token");
+    localStorage.removeItem("userId");
     setUser(null);
-    setCartCount(0); // Reset giỏ hàng khi đăng xuất
+    setCartCount(0);
     handleUserMenuClose();
     window.location.href = "/login";
   };
@@ -472,7 +461,7 @@ const Header = () => {
             <Tooltip title="Giỏ hàng">
               <StyledIconButton component={Link} to="/cart">
                 <Badge
-                  badgeContent={cartCount} // Hiển thị số lượng giỏ hàng
+                  badgeContent={cartCount}
                   color="error"
                   sx={{
                     "& .MuiBadge-badge": {

@@ -16,6 +16,11 @@ const orderSchema = new mongoose.Schema(
           required: true,
         },
         quantity: { type: Number, required: true },
+        warehouse: {  // Thêm trường warehouse cho từng sản phẩm
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Warehouse",
+          default: null,
+        },
       },
     ],
     totalAmount: { type: Number, required: true },
@@ -29,17 +34,17 @@ const orderSchema = new mongoose.Schema(
         country: { type: String },
       },
       phone: { type: String },
-    }, 
+    },
     status: {
       type: String,
       default: "Đang xử lí",
       enum: ["Đang xử lí", "Đang giao", "Đã giao", "Đã hủy"],
       index: true,
     },
-    
   },
   { timestamps: true }
 );
+
 
 const Order = mongoose.model("Order", orderSchema);
 

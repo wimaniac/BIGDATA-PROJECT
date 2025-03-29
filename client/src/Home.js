@@ -64,6 +64,7 @@ const SearchIconWrapper = styled("div")(({ theme }) => ({
   pointerEvents: "none",
   justifyContent: "center",
 }));
+
 const StyledInputBase = styled(InputBase)(({ theme }) => ({
   width: "100%",
   paddingLeft: `calc(1em + ${theme.spacing(4)})`,
@@ -81,6 +82,7 @@ const StyledViewAllButton = styled(Button)(({ theme }) => ({
     color: "#fff",
   },
 }));
+
 const SearchBox = styled("div")(({ theme }) => ({
   position: "relative",
   borderRadius: theme.shape.borderRadius,
@@ -94,6 +96,7 @@ const SearchBox = styled("div")(({ theme }) => ({
     width: "100%",
   },
 }));
+
 const Home = () => {
   const [bestSellers, setBestSellers] = useState([]);
   const [newProducts, setNewProducts] = useState([]);
@@ -111,19 +114,25 @@ const Home = () => {
 
   const fetchBestSellers = async () => {
     try {
-      const response = await axios.get("http://localhost:5000/api/products");
-      setBestSellers(response.data.slice(0, 8)); // Chỉ lấy 8 sản phẩm
+      const response = await axios.get("http://localhost:5000/api/products", {
+        params: { sort: "bestSelling", limit: 8 },
+      });
+      setBestSellers(response.data);
     } catch (error) {
       console.error("Lỗi lấy sản phẩm bán chạy:", error);
+      setBestSellers([]);
     }
   };
 
   const fetchNewProducts = async () => {
     try {
-      const response = await axios.get("http://localhost:5000/api/products");
-      setNewProducts(response.data.slice(0, 8)); // Chỉ lấy 8 sản phẩm
+      const response = await axios.get("http://localhost:5000/api/products", {
+        params: { sort: "newest", limit: 8 },
+      });
+      setNewProducts(response.data);
     } catch (error) {
       console.error("Lỗi lấy sản phẩm mới:", error);
+      setNewProducts([]);
     }
   };
 
@@ -138,17 +147,6 @@ const Home = () => {
     }
   };
 
-  const fetchChildCategories = async (parentId) => {
-    try {
-      const response = await axios.get(
-        `http://localhost:5000/api/categories/subcategories/${parentId}`
-      );
-      setChildCategories((prev) => ({ ...prev, [parentId]: response.data }));
-    } catch (error) {
-      console.error("Lỗi lấy danh mục con:", error);
-    }
-  };
-
   const handleMenuOpen = (event) => {
     setAnchorEl(event.currentTarget);
   };
@@ -159,6 +157,7 @@ const Home = () => {
     setChildCategories([]);
     setCurrentParentId(null);
   };
+
   const handleParentHover = async (event, parentId) => {
     setCurrentParentId(parentId);
     setChildAnchorEl(event.currentTarget);
@@ -171,10 +170,12 @@ const Home = () => {
       console.error("Lỗi lấy danh mục con:", error);
     }
   };
+
   const handleChildMenuClose = () => {
     setChildAnchorEl(null);
     setCurrentParentId(null);
   };
+
   return (
     <Box>
       {/* Banner Swiper */}
@@ -212,44 +213,59 @@ const Home = () => {
           </Typography>
           <StyledViewAllButton
             component={Link}
-            to="/shop?sort=bestSelling" // Thêm query để lọc sản phẩm bán chạy
+            to="/shop?sort=bestSelling"
             endIcon={<ArrowForwardIosIcon fontSize="small" />}
           >
             Xem tất cả
           </StyledViewAllButton>
         </Box>
         <Grid container spacing={3}>
-          {bestSellers.map((product) => (
-            <Grid item xs={12} sm={6} md={3} key={product._id}>
-              <Card
-                sx={{
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <Link
-                  to={`/product/${product._id}`}
-                  style={{ textDecoration: "none", color: "inherit" }}
+          {bestSellers.length > 0 ? (
+            bestSellers.map((product) => (
+              <Grid item xs={12} sm={6} md={3} key={product._id}>
+                <Card
+                  sx={{
+                    height: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
                 >
-                  <CardMedia
-                    component="img"
-                    height="200"
-                    image={product.mainImage || "/assets/placeholder.jpg"}
-                    alt={product.name}
-                  />
-                  <CardContent>
-                    <Typography variant="h6" noWrap>
-                      {product.name}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {product.price} VND
-                    </Typography>
-                  </CardContent>
-                </Link>
-              </Card>
-            </Grid>
-          ))}
+                  <Link
+                    to={`/product/${product._id}`}
+                    style={{ textDecoration: "none", color: "inherit" }}
+                  >
+                    <CardMedia
+                      component="img"
+                      height="200"
+                      image={product.mainImage || "/assets/placeholder.jpg"}
+                      alt={product.name}
+                    />
+                    <CardContent>
+                      <Typography variant="h6" noWrap>
+                        {product.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {product.discountedPrice || product.price} VND
+                      </Typography>
+                      {product.discountedPrice && (
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ textDecoration: "line-through" }}
+                        >
+                          {product.originalPrice} VND
+                        </Typography>
+                      )}
+                    </CardContent>
+                  </Link>
+                </Card>
+              </Grid>
+            ))
+          ) : (
+            <Typography variant="body1" sx={{ my: 2 }}>
+              Không có sản phẩm bán chạy nào để hiển thị.
+            </Typography>
+          )}
         </Grid>
 
         {/* New Products */}
@@ -265,44 +281,59 @@ const Home = () => {
           </Typography>
           <StyledViewAllButton
             component={Link}
-            to="/shop?sort=newest" 
+            to="/shop?sort=newest"
             endIcon={<ArrowForwardIosIcon fontSize="small" />}
           >
             Xem tất cả
           </StyledViewAllButton>
         </Box>
         <Grid container spacing={3}>
-          {newProducts.map((product) => (
-            <Grid item xs={12} sm={6} md={3} key={product._id}>
-              <Card
-                sx={{
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <Link
-                  to={`/product/${product._id}`}
-                  style={{ textDecoration: "none", color: "inherit" }}
+          {newProducts.length > 0 ? (
+            newProducts.map((product) => (
+              <Grid item xs={12} sm={6} md={3} key={product._id}>
+                <Card
+                  sx={{
+                    height: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
                 >
-                  <CardMedia
-                    component="img"
-                    height="200"
-                    image={product.mainImage || "/assets/placeholder.jpg"}
-                    alt={product.name}
-                  />
-                  <CardContent>
-                    <Typography variant="h6" noWrap>
-                      {product.name}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {product.price} VND
-                    </Typography>
-                  </CardContent>
-                </Link>
-              </Card>
-            </Grid>
-          ))}
+                  <Link
+                    to={`/product/${product._id}`}
+                    style={{ textDecoration: "none", color: "inherit" }}
+                  >
+                    <CardMedia
+                      component="img"
+                      height="200"
+                      image={product.mainImage || "/assets/placeholder.jpg"}
+                      alt={product.name}
+                    />
+                    <CardContent>
+                      <Typography variant="h6" noWrap>
+                        {product.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {product.discountedPrice || product.price} VND
+                      </Typography>
+                      {product.discountedPrice && (
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ textDecoration: "line-through" }}
+                        >
+                          {product.originalPrice} VND
+                        </Typography>
+                      )}
+                    </CardContent>
+                  </Link>
+                </Card>
+              </Grid>
+            ))
+          ) : (
+            <Typography variant="body1" sx={{ my: 2 }}>
+              Không có sản phẩm mới nào để hiển thị.
+            </Typography>
+          )}
         </Grid>
       </Container>
     </Box>

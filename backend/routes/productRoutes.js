@@ -30,10 +30,26 @@ const upload = multer({ storage });
 // Get all products
 router.get("/", async (req, res) => {
   try {
-    const products = await Product.find()
+    const { sort, limit = 8 } = req.query; // Thêm query parameters: sort và limit
+    let query = Product.find()
       .populate("parentCategory", "name")
       .populate("subCategory", "name")
       .populate("supplier", "name");
+
+    // Sắp xếp theo tiêu chí
+    if (sort === "bestSelling") {
+      query = query
+        .where("popularityRank")
+        .gt(0) // Chỉ lấy sản phẩm có popularityRank > 0
+        .sort({ popularityRank: 1 }); // Sắp xếp theo popularityRank tăng dần
+    } else if (sort === "newest") {
+      query = query.sort({ createdAt: -1 }); // Sắp xếp theo createdAt giảm dần (mới nhất trước)
+    }
+
+    // Giới hạn số lượng sản phẩm
+    query = query.limit(parseInt(limit));
+
+    const products = await query.exec();
 
     // Thêm giá giảm cho từng sản phẩm
     const productsWithDiscount = await Promise.all(
@@ -131,7 +147,6 @@ router.post(
   }
 );
 
-// Update product
 // Update product
 router.put(
   "/:id",

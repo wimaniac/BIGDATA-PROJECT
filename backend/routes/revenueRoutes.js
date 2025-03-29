@@ -22,14 +22,18 @@ const checkRole = async (req, res, next) => {
   }
 };
 
+
 // Lấy báo cáo doanh thu theo danh mục
 router.get("/category", checkRole, async (req, res) => {
   try {
-    const report = await RevenueReport.findOne({ type: "category" })
-      .sort({ createdAt: -1 }); // Lấy báo cáo mới nhất
-    res.json(report ? report.data : []);
+    const report = await RevenueReport.findOne({ type: "category" }).sort({ createdAt: -1 });
+    if (!report || !report.data) {
+      return res.json([]); // Trả về mảng rỗng nếu không có dữ liệu
+    }
+    res.json(report.data);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("Lỗi khi lấy báo cáo theo danh mục:", err);
+    res.status(500).json({ message: "Lỗi server khi lấy báo cáo theo danh mục" });
   }
 });
 
@@ -40,12 +44,14 @@ router.get("/time", checkRole, async (req, res) => {
     if (!["day", "month", "year"].includes(period)) {
       return res.status(400).json({ message: "Period phải là 'day', 'month' hoặc 'year'" });
     }
-    const report = await RevenueReport.findOne({ type: "time", period })
-      .sort({ createdAt: -1 }); // Lấy báo cáo mới nhất cho period
-    res.json(report ? report.data : []);
+    const report = await RevenueReport.findOne({ type: "time", period }).sort({ createdAt: -1 });
+    if (!report || !report.data) {
+      return res.json([]); // Trả về mảng rỗng nếu không có dữ liệu
+    }
+    res.json(report.data);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("Lỗi khi lấy báo cáo theo thời gian:", err);
+    res.status(500).json({ message: "Lỗi server khi lấy báo cáo theo thời gian" });
   }
 });
-
 export default router;

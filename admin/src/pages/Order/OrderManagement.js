@@ -99,6 +99,8 @@ const OrderManagement = () => {
   };
 
   const handleViewDetails = (order) => {
+    console.log("Order details:", order);
+    console.log("Warehouse data:", order.warehouse);
     setSelectedOrder(order);
   };
 
@@ -119,7 +121,6 @@ const OrderManagement = () => {
     return status !== "Đã giao" && status !== "Đã hủy";
   };
 
-  // Hàm định dạng ngày giờ
   const formatDateTime = (dateString) => {
     const date = new Date(dateString);
     return date.toLocaleString("vi-VN", {
@@ -154,7 +155,7 @@ const OrderManagement = () => {
               <TableCell>Email</TableCell>
               <TableCell>Số điện thoại</TableCell>
               <TableCell>Tổng tiền</TableCell>
-              <TableCell>Thời gian tạo</TableCell> {/* Thêm cột Thời gian tạo */}
+              <TableCell>Thời gian tạo</TableCell>
               <TableCell>Trạng thái</TableCell>
               <TableCell>Hành động</TableCell>
             </TableRow>
@@ -169,7 +170,7 @@ const OrderManagement = () => {
                   <TableCell>{order.user?.email || "Chưa có email"}</TableCell>
                   <TableCell>{order.shippingInfo?.phone || "Chưa có số"}</TableCell>
                   <TableCell>{order.totalAmount.toLocaleString()} VNĐ</TableCell>
-                  <TableCell>{formatDateTime(order.createdAt)}</TableCell> {/* Hiển thị thời gian tạo */}
+                  <TableCell>{formatDateTime(order.createdAt)}</TableCell>
                   <TableCell>
                     {isStatusEditable(order.status) ? (
                       <FormControl sx={{ minWidth: 120 }}>
@@ -215,46 +216,43 @@ const OrderManagement = () => {
         <Dialog open={!!selectedOrder} onClose={handleCloseDetails}>
           <DialogTitle>Chi tiết đơn hàng {selectedOrder._id}</DialogTitle>
           <DialogContent>
-            <Typography>
-              <strong>Khách hàng:</strong> {selectedOrder.shippingInfo?.name || "Chưa có"}
-            </Typography>
-            <Typography>
-              <strong>Email:</strong> {selectedOrder.user?.email || "Chưa có email"}
-            </Typography>
-            <Typography>
-              <strong>Số điện thoại:</strong> {selectedOrder.shippingInfo?.phone || "Chưa có"}
-            </Typography>
-            <Typography>
-              <strong>Địa chỉ:</strong>{" "}
-              {`${selectedOrder.shippingInfo?.address.street || ""}, 
-                ${selectedOrder.shippingInfo?.address.ward || ""}, 
-                ${selectedOrder.shippingInfo?.address.district || ""}, 
-                ${selectedOrder.shippingInfo?.address.city || ""}, 
-                ${selectedOrder.shippingInfo?.address.country || ""}`}
-            </Typography>
-            <Typography>
-              <strong>Tổng tiền:</strong> {selectedOrder.totalAmount.toLocaleString()} VNĐ
-            </Typography>
-            <Typography>
-              <strong>Thời gian tạo:</strong> {formatDateTime(selectedOrder.createdAt)}
-            </Typography>
-            <Typography>
-              <strong>Trạng thái:</strong> {selectedOrder.status}
-            </Typography>
-            <Typography>
-              <strong>Kho xử lý:</strong> {selectedOrder.warehouse?.name || "Chưa xác định"}
-            </Typography>
-            <Typography>
-              <strong>Sản phẩm:</strong>
-            </Typography>
-            <ul>
-              {selectedOrder.products.map((item) => (
-                <li key={item.product._id}>
-                  {item.product.name} - Số lượng: {item.quantity}
-                </li>
-              ))}
-            </ul>
-          </DialogContent>
+  <Typography>
+    <strong>Khách hàng:</strong> {selectedOrder.shippingInfo?.name || "Chưa có"}
+  </Typography>
+  <Typography>
+    <strong>Email:</strong> {selectedOrder.user?.email || "Chưa có email"}
+  </Typography>
+  <Typography>
+    <strong>Số điện thoại:</strong> {selectedOrder.shippingInfo?.phone || "Chưa có"}
+  </Typography>
+  <Typography>
+    <strong>Địa chỉ:</strong>{" "}
+    {`${selectedOrder.shippingInfo?.address.street || ""}, 
+      ${selectedOrder.shippingInfo?.address.ward || ""}, 
+      ${selectedOrder.shippingInfo?.address.district || ""}, 
+      ${selectedOrder.shippingInfo?.address.city || ""}, 
+      ${selectedOrder.shippingInfo?.address.country || ""}`}
+  </Typography>
+  <Typography>
+    <strong>Tổng tiền:</strong> {selectedOrder.totalAmount.toLocaleString()} VNĐ
+  </Typography>
+  <Typography>
+    <strong>Thời gian tạo:</strong> {formatDateTime(selectedOrder.createdAt)}
+  </Typography>
+  <Typography>
+    <strong>Trạng thái:</strong> {selectedOrder.status}
+  </Typography>
+  <Typography>
+    <strong>Sản phẩm:</strong>
+  </Typography>
+  <ul>
+    {selectedOrder.products.map((item) => (
+      <li key={item.product._id}>
+        {item.product.name} - Số lượng: {item.quantity} - Kho xử lý: {item.warehouse?.name || "Chưa xác định"}
+      </li>
+    ))}
+  </ul>
+</DialogContent>
           <DialogActions>
             <Button onClick={handleCloseDetails} color="primary">
               Đóng

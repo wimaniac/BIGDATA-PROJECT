@@ -30,6 +30,7 @@ const productSchema = new mongoose.Schema(
     details: { type: String, default: "" },
     unit: { type: String, default: "" }, 
     totalSold: { type: Number, default: 0 },
+    popularityRank: { type: Number, default: 0 }, 
   },
   { timestamps: true }
 );

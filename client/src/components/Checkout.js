@@ -133,7 +133,13 @@ const Checkout = () => {
       return;
     }
   
+    if (!cart || !cart.items || cart.items.length === 0) {
+      alert("Giỏ hàng trống! Vui lòng thêm sản phẩm trước khi thanh toán.");
+      return;
+    }
+  
     try {
+      // Tạo dữ liệu đơn hàng từ giỏ hàng frontend
       const orderData = {
         user: userId,
         products: cart.items.map((item) => ({
@@ -146,6 +152,8 @@ const Checkout = () => {
         status: "Đang xử lí",
       };
       console.log("Tạo đơn hàng với dữ liệu:", orderData);
+  
+      // Gửi request tạo đơn hàng
       const orderResponse = await axios.post(
         "http://localhost:5000/api/orders",
         orderData,
@@ -153,9 +161,12 @@ const Checkout = () => {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
-      const orderId = orderResponse.data._id;
-      const selectedWarehouse = orderResponse.data.warehouse;
   
+      // Lấy orderId từ response
+      const orderId = orderResponse.data.order._id;
+      console.log("Order ID:", orderId);
+  
+      // Tạo dữ liệu thanh toán
       const paymentData = {
         order: orderId,
         user: userId,
@@ -164,25 +175,34 @@ const Checkout = () => {
         status: "Đang xử lí",
       };
       console.log("Tạo thanh toán với dữ liệu:", paymentData);
-      await axios.post("http://localhost:5000/api/payments", paymentData, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
   
-      console.log("Cập nhật thông tin người dùng:", { address: formData.address, phone: formData.phone });
+      // Gửi request tạo thanh toán
+      const paymentResponse = await axios.post(
+        "http://localhost:5000/api/payments",
+        paymentData,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      console.log("Payment Response:", paymentResponse.data);
+  
+      // Cập nhật thông tin người dùng
+      console.log("Cập nhật thông tin người dùng:", { shippingInfo: { address: formData.address, phone: formData.phone } });
       await axios.put(
         `http://localhost:5000/api/users/${userId}`,
         {
-          address: formData.address,
-          phone: formData.phone,
+          shippingInfo: { address: formData.address, phone: formData.phone },
         },
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
   
+      // Reset giỏ hàng trong frontend
       setCart(null);
       window.dispatchEvent(new CustomEvent("cartUpdated", { detail: { cartCount: 0 } }));
   
+      // Điều hướng về trang chủ
       navigate("/");
     } catch (error) {
       console.error("Lỗi khi thanh toán:", error);

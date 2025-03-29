@@ -8,6 +8,9 @@ import Warehouse from "../models/Warehouse.js";
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import axios from "axios";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const router = express.Router();
 
@@ -30,38 +33,63 @@ const checkRole = async (req, res, next) => {
   }
 };
 
-// Hàm tính khoảng cách bằng OpenRouteService Directions API
-const calculateDistance = async (city1, city2) => {
+// Hàm lấy tọa độ từ thành phố bằng Radar API
+const getCoordinates = async (city) => {
   try {
-    const apiKey = "5b3ce3597851110001cf6248cec8ea436c0e4860877fe546696f27f0";
-    const coords1 = await getCoordinates(city1);
-    const coords2 = await getCoordinates(city2);
-
+    const apiKey = process.env.RADAR_API_KEY;
+    console.log("Sending request to Radar with API Key:", apiKey);
     const response = await axios.get(
-      `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${apiKey}&start=${coords1.lng},${coords1.lat}&end=${coords2.lng},${coords2.lat}`
+      `https://api.radar.io/v1/geocode/forward?query=${encodeURIComponent(city)}`,
+      {
+        headers: {
+          Authorization: apiKey,
+        },
+      }
     );
-    const distanceInMeters = response.data.features[0].properties.segments[0].distance;
-    return distanceInMeters / 1000; // Chuyển sang km
+    console.log("Radar Geocode Response:", response.data);
+
+    if (!response.data.addresses || response.data.addresses.length === 0) {
+      throw new Error(`Không tìm thấy tọa độ của ${city}`);
+    }
+
+    const [longitude, latitude] = response.data.addresses[0].geometry.coordinates;
+    return { lng: longitude, lat: latitude };
   } catch (err) {
-    console.error(`Lỗi khi tính khoảng cách giữa ${city1} và ${city2}:`, err.message);
+    console.error(`Lỗi khi lấy tọa độ của ${city}:`, err.message);
+    return { lng: 0, lat: 0 };
+  }
+};
+
+
+// Hàm tính khoảng cách bằng Radar Distance API
+const calculateDistance = async (city1, city2) => {
+  const coords1 = await getCoordinates(city1);
+  const coords2 = await getCoordinates(city2);
+
+  if (!coords1.lat || !coords1.lng || !coords2.lat || !coords2.lng) {
+    console.log(`Dữ liệu tọa độ không hợp lệ: ${city1} (${coords1.lat}, ${coords1.lng}), ${city2} (${coords2.lat}, ${coords2.lng})`);
+    return Infinity;
+  }
+
+  try {
+    const apiKey = process.env.RADAR_API_KEY;
+    const url = `https://api.radar.io/v1/route/distance?origin=${coords1.lat},${coords1.lng}&destination=${coords2.lat},${coords2.lng}&modes=car`;
+    console.log(`Tính khoảng cách giữa ${city1} and ${city2}:`, url);
+    const response = await axios.get(url, {
+      headers: { Authorization: apiKey },
+    });
+
+    if (!response.data.routes || !response.data.routes.car) {
+      throw new Error("Không tìm thấy dữ liệu khoảng cách");
+    }
+
+    return response.data.routes.car.distance.value / 1000; // Chuyển sang km
+  } catch (err) {
+    console.error(`Lỗi khi tính khoảng cách giữa ${city1} và ${city2}:`, err.response?.data || err.message);
     return Infinity;
   }
 };
 
-// Hàm lấy tọa độ từ thành phố
-const getCoordinates = async (city) => {
-  try {
-    const apiKey = "5b3ce3597851110001cf6248cec8ea436c0e4860877fe546696f27f0";
-    const response = await axios.get(
-      `https://api.openrouteservice.org/geocode/search?api_key=${apiKey}&text=${encodeURIComponent(city)}&boundary.country=VN`
-    );
-    const { coordinates } = response.data.features[0].geometry;
-    return { lng: coordinates[0], lat: coordinates[1] };
-  } catch (err) {
-    console.error(`Lỗi khi lấy tọa độ của ${city}:`, err.message);
-    throw new Error("Không thể lấy tọa độ");
-  }
-};
 
 // Hàm tìm kho gần nhất
 const findNearestWarehouse = async (shippingCity, productId, quantityOrdered) => {
@@ -75,11 +103,13 @@ const findNearestWarehouse = async (shippingCity, productId, quantityOrdered) =>
     inventoryItems.map(async (item) => {
       const warehouseCity = item.warehouse.location.city;
       const distance = await calculateDistance(shippingCity, warehouseCity);
+      console.log(`Kho ${warehouseCity} - ${shippingCity}: ${distance} km`);
       return { warehouse: item.warehouse, distance, inventory: item };
     })
   );
 
   warehouseDistances.sort((a, b) => a.distance - b.distance);
+  console.log("Kho sau khi sắp xếp:", warehouseDistances.map(w => `${w.warehouse.location.city}: ${w.distance} km`));
 
   for (const { warehouse, inventory } of warehouseDistances) {
     if (inventory.quantity >= quantityOrdered) {
@@ -88,59 +118,72 @@ const findNearestWarehouse = async (shippingCity, productId, quantityOrdered) =>
   }
   return warehouseDistances[0]?.warehouse || null;
 };
-
 // Tạo đơn hàng mới
 router.post("/", async (req, res) => {
   const { user, products, totalAmount, shippingInfo, status } = req.body;
 
-  if (!user || !products || !totalAmount) {
+  if (!user || !products || !totalAmount || !shippingInfo) {
     return res.status(400).json({ message: "Thiếu thông tin cần thiết!" });
   }
 
   try {
-    const warehouses = await Warehouse.find().lean();
-    const inventories = await Inventory.find({ product: { $in: products.map(p => p.product) } })
-      .populate("warehouse")
-      .lean();
-
     const userCity = shippingInfo.address.city;
-    let selectedWarehouse = null;
 
-    for (const warehouse of warehouses) {
-      const warehouseInventory = inventories.filter(
-        inv => inv.warehouse._id.toString() === warehouse._id.toString()
-      );
-      const hasEnoughStock = products.every(product => {
-        const inv = warehouseInventory.find(i => i.product.toString() === product.product);
-        return inv && inv.quantity >= product.quantity;
-      });
+    // Tìm kho gần nhất cho từng sản phẩm
+    const productAssignments = await Promise.all(
+      products.map(async (item) => {
+        const warehouse = await findNearestWarehouse(userCity, item.product, item.quantity);
+        if (!warehouse) {
+          throw new Error(`Không tìm thấy kho đủ tồn kho cho sản phẩm ${item.product}`);
+        }
+        return {
+          product: item.product,
+          quantity: item.quantity,
+          warehouse: warehouse._id,
+        };
+      })
+    );
 
-      if (hasEnoughStock) {
-        selectedWarehouse = warehouse;
-        break;
-      }
-    }
-
-    if (!selectedWarehouse) {
-      return res.status(400).json({ message: "Không có kho nào đủ tồn kho!" });
-    }
-
+    // Tạo đơn hàng
     const order = new Order({
       user,
-      products,
+      products: productAssignments,
       totalAmount,
       shippingInfo: shippingInfo || {},
       status: status || "Đang xử lí",
-      warehouse: selectedWarehouse._id,
     });
+
     const newOrder = await order.save();
 
+    // Populate thông tin đơn hàng để trả về
+    const populatedOrder = await Order.findById(newOrder._id)
+      .populate("products.product", "name price")
+      .populate("products.warehouse", "name location")
+      .lean();
+
+    // Cập nhật thông tin người dùng với shippingInfo (nếu cần)
+    const updatedUser = await User.findByIdAndUpdate(
+      user,
+      { $set: { shippingInfo: shippingInfo } },
+      { new: true }
+    );
+    if (!updatedUser) {
+      console.warn(`Không tìm thấy người dùng ${user} để cập nhật thông tin!`);
+    } else {
+      console.log(`Đã cập nhật thông tin người dùng ${user} với shippingInfo:`, shippingInfo);
+    }
+
+    // Kiểm tra và xóa giỏ hàng (nếu có)
     const deletedCart = await Cart.findOneAndDelete({ userId: user });
-    console.log("Giỏ hàng đã xóa:", deletedCart);
+    if (deletedCart) {
+      console.log(`Đã xóa giỏ hàng của người dùng ${user}`);
+    } else {
+      console.log(`Không tìm thấy giỏ hàng của người dùng ${user} để xóa - có thể giỏ hàng chưa được lưu vào database`);
+    }
 
     res.status(201).json({
-      ...newOrder.toJSON(),
-      warehouse: selectedWarehouse,
+      message: "Tạo đơn hàng thành công!",
+      order: populatedOrder,
     });
   } catch (err) {
     console.error("Lỗi khi tạo đơn hàng:", err);
@@ -148,12 +191,12 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Các route GET giữ nguyên
 router.get("/", checkRole, async (req, res) => {
   try {
     const orders = await Order.find()
       .populate("user", "name email")
-      .populate("products.product", "name price");
+      .populate("products.product", "name price")
+      .populate("products.warehouse", "name location");
     res.json(orders);
   } catch (err) {
     res.status(500).json({ message: err.message });

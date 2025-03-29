@@ -1,152 +1,203 @@
 import mongoose from "mongoose";
 import Order from "../models/Order.js";
-import Category from "../models/Category.js";
 import RevenueReport from "../models/RevenueReport.js";
 import { scheduleJob } from "node-schedule";
 
-// Job tracker tổng hợp: Tính doanh thu theo danh mục và thời gian
-const calculateRevenue = async () => {
-  console.log("Bắt đầu job tính doanh thu tổng hợp...");
-  try {
-    // Lấy dữ liệu đầu vào: tất cả đơn hàng đã giao
-    const orders = await Order.find({ status: "Đã giao" })
-      .populate({
-        path: "products.product",
-        select: "name price parentCategory",
-        populate: { path: "parentCategory", select: "name" },
-      })
-      .lean();
+// Thu thập dữ liệu từ đơn hàng (InputFormat)
+const OrderCollector = async () => {
+  const orders = await Order.find({ status: "Đã giao" })
+    .populate({
+      path: "products.product",
+      select: "name price parentCategory subCategory",
+      populate: { path: "parentCategory subCategory", select: "name" },
+    })
+    .lean();
+  console.log("Đơn hàng đã thu thập:", JSON.stringify(orders, null, 2));
+  return orders;
+};
 
-    if (!orders || orders.length === 0) {
-      console.log("Không có đơn hàng nào đã giao!");
+// Map Function
+const mapFunction = (order) => {
+  const keyValuePairs = [];
+
+  order.products.forEach(({ product, quantity }) => {
+    if (!product) {
+      console.warn("Sản phẩm không tồn tại trong đơn hàng:", order._id);
       return;
     }
 
-    // --- Xử lý doanh thu theo danh mục ---
+    const revenue = product.price * quantity;
+    const category = product.subCategory || product.parentCategory;
+    if (!category || !category._id) {
+      console.warn("Sản phẩm không có danh mục hợp lệ:", product);
+      return;
+    }
 
-    // Giai đoạn MAP cho danh mục: Ánh xạ thành cặp key-value theo categoryId
-    const categoryMappedData = orders.flatMap((order) => {
-      if (!order.products || !Array.isArray(order.products)) {
-        console.warn(`Đơn hàng ${order._id} không có sản phẩm hợp lệ`);
-        return [];
-      }
-      return order.products.map((item) => {
-        const product = item.product;
-        if (!product || !product.price || !product.parentCategory) {
-          console.warn(`Sản phẩm trong đơn hàng ${order._id} không hợp lệ:`, item);
-          return {
-            key: "unknown",
-            value: { quantity: item.quantity, revenue: 0, productName: "Unknown" },
-          };
-        }
-        return {
-          key: product.parentCategory._id.toString(),
-          value: {
-            quantity: item.quantity,
-            revenue: item.quantity * product.price,
-            productName: product.name,
-            productId: product._id.toString(),
-          },
-        };
-      });
+    const categoryId = category._id.toString();
+    const dayKey = order.createdAt.toISOString().slice(0, 10);
+    const monthKey = order.createdAt.toISOString().slice(0, 7);
+    const yearKey = order.createdAt.toISOString().slice(0, 4);
+
+    keyValuePairs.push({
+      key: `category:${categoryId}`,
+      value: { productId: product._id.toString(), productName: product.name, quantity, revenue, categoryName: category.name },
     });
 
-    // Giai đoạn REDUCE cho danh mục: Tổng hợp theo categoryId
-    const categoryCombinedData = categoryMappedData.reduce((acc, { key, value }) => {
-      if (!acc[key]) {
-        acc[key] = {
-          totalRevenue: 0,
-          totalSoldItems: 0,
-          products: {},
-        };
-      }
-      acc[key].totalRevenue += value.revenue;
-      acc[key].totalSoldItems += value.quantity;
-      if (!acc[key].products[value.productId]) {
-        acc[key].products[value.productId] = {
-          productName: value.productName,
+    keyValuePairs.push({ key: `day:${dayKey}`, value: { revenue } });
+    keyValuePairs.push({ key: `month:${monthKey}`, value: { revenue } });
+    keyValuePairs.push({ key: `year:${yearKey}`, value: { revenue } });
+  });
+
+  return keyValuePairs;
+};
+
+// Partition Function
+const partitionFunction = (keyValuePairs) => {
+  const partitionedData = {};
+
+  keyValuePairs.forEach(({ key, value }) => {
+    if (!partitionedData[key]) {
+      partitionedData[key] = [];
+    }
+    partitionedData[key].push(value);
+  });
+
+  return partitionedData;
+};
+
+// Map Phase (Task Tracker M1, M2, M3)
+const MapPhase = async (orders) => {
+  const keyValuePairs = orders.flatMap(order => mapFunction(order));
+  const partitionedData = partitionFunction(keyValuePairs);
+  return partitionedData; // Trả về dữ liệu trung gian (Region1, Region2)
+};
+
+// Sort Function
+const sortFunction = (partitionedData) => {
+  const sortedData = { category: [], time: { day: [], month: [], year: [] } };
+
+  for (const key in partitionedData) {
+    const [type, id] = key.split(":");
+    if (type === "category") {
+      sortedData.category.push({ key, values: partitionedData[key] });
+    } else {
+      const period = type;
+      sortedData.time[period].push({ key, values: partitionedData[key] });
+    }
+  }
+
+  // Sắp xếp dữ liệu thời gian theo thời gian
+  ["day", "month", "year"].forEach(period => {
+    sortedData.time[period].sort((a, b) => a.key.localeCompare(b.key));
+  });
+
+  return sortedData;
+};
+
+// Reduce Function (Tổng hợp dữ liệu)
+const reduceFunction = (sortedData) => {
+  const reducedData = { category: [], time: { day: [], month: [], year: [] } };
+
+  // Xử lý dữ liệu theo danh mục
+  sortedData.category.forEach(({ key, values }) => {
+    const [_, categoryId] = key.split(":");
+    const result = {
+      categoryId,
+      categoryName: values[0].categoryName || "Danh mục không xác định",
+      totalSoldItems: 0,
+      totalRevenue: 0,
+      products: {},
+    };
+
+    values.forEach(({ productId, productName, quantity, revenue }) => {
+      result.totalSoldItems += quantity;
+      result.totalRevenue += revenue;
+
+      if (!result.products[productId]) {
+        result.products[productId] = {
+          productName: productName || "Sản phẩm không xác định",
           quantity: 0,
           revenue: 0,
         };
       }
-      acc[key].products[value.productId].quantity += value.quantity;
-      acc[key].products[value.productId].revenue += value.revenue;
-      return acc;
-    }, {});
+      result.products[productId].quantity += quantity;
+      result.products[productId].revenue += revenue;
+    });
 
-    // Giai đoạn FINALIZE cho danh mục: Thêm tên danh mục và định dạng
-    const categoryRevenues = await Promise.all(
-      Object.entries(categoryCombinedData).map(async ([categoryId, data]) => {
-        let categoryName = "Unknown";
-        try {
-          const category = await Category.findById(categoryId);
-          categoryName = category ? category.name : "Unknown";
-        } catch (err) {
-          console.error(`Lỗi khi lấy danh mục ${categoryId}:`, err.message);
-        }
-        return {
-          categoryId,
-          categoryName,
-          totalRevenue: data.totalRevenue,
-          totalSoldItems: data.totalSoldItems,
-          products: Object.values(data.products),
-        };
-      })
-    );
+    result.products = Object.values(result.products);
+    reducedData.category.push(result);
+  });
 
-    // --- Xử lý doanh thu theo thời gian ---
-    const periods = ["day", "month", "year"];
-    const timeRevenues = {};
+  // Xử lý dữ liệu theo thời gian
+  ["day", "month", "year"].forEach(period => {
+    sortedData.time[period].forEach(({ key, values }) => {
+      const [_, time] = key.split(":");
+      const totalRevenue = values.reduce((sum, { revenue }) => sum + revenue, 0);
+      reducedData.time[period].push({ time, revenue: totalRevenue });
+    });
+  });
 
-    for (const period of periods) {
-      // Giai đoạn MAP cho thời gian: Ánh xạ theo khoảng thời gian
-      const timeMappedData = orders.map((order) => {
-        const date = new Date(order.createdAt);
-        let key;
-        if (period === "day") {
-          key = date.toISOString().split("T")[0];
-        } else if (period === "month") {
-          key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-        } else {
-          key = date.getFullYear().toString();
-        }
-        const revenue = order.products.reduce(
-          (sum, item) => sum + item.quantity * (item.product?.price || 0),
-          0
-        );
-        return { key, value: revenue };
-      });
+  return reducedData;
+};
 
-      // Giai đoạn REDUCE cho thời gian: Tổng hợp theo thời gian
-      const timeCombinedData = timeMappedData.reduce((acc, { key, value }) => {
-        acc[key] = (acc[key] || 0) + value;
-        return acc;
-      }, {});
-
-      // Giai đoạn FINALIZE cho thời gian: Định dạng và sắp xếp
-      timeRevenues[period] = Object.entries(timeCombinedData)
-        .map(([time, revenue]) => ({
-          time,
-          revenue,
-        }))
-        .sort((a, b) => a.time.localeCompare(b.time));
-    }
-
-    // Lưu tất cả kết quả vào database trong một lần
-    await Promise.all([
-      RevenueReport.create({ type: "category", data: categoryRevenues }),
-      ...periods.map((period) =>
-        RevenueReport.create({ type: "time", period, data: timeRevenues[period] })
-      ),
-    ]);
-
-    console.log("Đã lưu toàn bộ báo cáo doanh thu vào database.");
-  } catch (err) {
-    console.error("Lỗi trong job tính doanh thu tổng hợp:", err.stack);
+// OutputFormat
+const OutputFormat = async ({ category, time }) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const bulkOperations = [
+      {
+        updateOne: {
+          filter: { type: "category" },
+          update: { $set: { data: category } },
+          upsert: true,
+        },
+      },
+      ...["day", "month", "year"].map((period) => ({
+        updateOne: {
+          filter: { type: "time", period },
+          update: { $set: { data: time[period] } },
+          upsert: true,
+        },
+      })),
+    ];
+    await RevenueReport.bulkWrite(bulkOperations, { session });
+    await session.commitTransaction();
+  } catch (error) {
+    await session.abortTransaction();
+    console.error("❌ Lỗi trong OutputFormat:", error);
+    throw error;
+  } finally {
+    session.endSession();
   }
 };
 
-// Lập lịch chạy job mỗi 1 phút
-scheduleJob("* * * * *", calculateRevenue);
+// Reduce Phase (Task Tracker R1, R2)
+const ReducePhase = async (intermediateData) => {
+  const sortedData = sortFunction(intermediateData);
+  const reducedData = reduceFunction(sortedData);
+  await OutputFormat(reducedData);
+};
 
-export default calculateRevenue;
+// Job Tracker
+const RevenueJob = async () => {
+  console.log("🔄 JobTracker doanh thu bắt đầu...");
+  try {
+    const orders = await OrderCollector();
+    const intermediateData = await MapPhase(orders);
+    await ReducePhase(intermediateData);
+    console.log("✅ JobTracker doanh thu hoàn tất!");
+  } catch (error) {
+    console.error("❌ Lỗi trong JobTracker doanh thu:", error);
+    throw error;
+  }
+};
+
+// Lên lịch JobTracker
+const scheduleRevenueJob = () => {
+  scheduleJob("0 0 * * *", async () => {
+    await RevenueJob();
+  });
+};
+
+export { RevenueJob, scheduleRevenueJob };
