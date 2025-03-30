@@ -14,20 +14,12 @@ const DataCollector = async () => {
     })
     .lean();
 
-  // Lấy sản phẩm mới (trong 30 ngày gần nhất)
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const newProducts = await Product.find({ createdAt: { $gte: thirtyDaysAgo } })
-    .populate("parentCategory subCategory", "name")
-    .lean();
-
   console.log("Đơn hàng đã thu thập:", JSON.stringify(orders, null, 2));
-  console.log("Sản phẩm mới:", JSON.stringify(newProducts, null, 2));
-
-  return { orders, newProducts };
+  return orders;
 };
 
 // Map Function
-const mapFunction = ({ orders, newProducts }) => {
+const mapFunction = (orders) => {
   const keyValuePairs = [];
 
   // Map cho sản phẩm bán chạy (từ orders)
@@ -43,20 +35,6 @@ const mapFunction = ({ orders, newProducts }) => {
         key: `topSelling:${productId}`,
         value: { productId, productName: product.name, quantity },
       });
-    });
-  });
-
-  // Map cho sản phẩm mới (từ newProducts)
-  newProducts.forEach(product => {
-    const productId = product._id.toString();
-    keyValuePairs.push({
-      key: "newProduct",
-      value: {
-        productId,
-        productName: product.name,
-        createdAt: product.createdAt,
-        category: product.subCategory || product.parentCategory,
-      },
     });
   });
 
@@ -79,35 +57,28 @@ const partitionFunction = (keyValuePairs) => {
 
 // Map Phase
 const MapPhase = async () => {
-  const { orders, newProducts } = await DataCollector();
-  const keyValuePairs = mapFunction({ orders, newProducts });
+  const orders = await DataCollector();
+  const keyValuePairs = mapFunction(orders);
   const partitionedData = partitionFunction(keyValuePairs);
   return partitionedData;
 };
 
 // Sort Function
 const sortFunction = (partitionedData) => {
-  const sortedData = { topSelling: [], newProducts: [] };
+  const sortedData = { topSelling: [] };
 
   for (const key in partitionedData) {
     if (key.startsWith("topSelling:")) {
       sortedData.topSelling.push({ key, values: partitionedData[key] });
-    } else if (key === "newProduct") {
-      sortedData.newProducts.push({ key, values: partitionedData[key] });
     }
   }
-
-  // Sắp xếp sản phẩm mới theo createdAt (mới nhất trước)
-  sortedData.newProducts.forEach(item => {
-    item.values.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  });
 
   return sortedData;
 };
 
 // Reduce Function
 const reduceFunction = (sortedData) => {
-  const reducedData = { topSelling: [], newProducts: [] };
+  const reducedData = { topSelling: [] };
 
   // Xử lý sản phẩm bán chạy
   sortedData.topSelling.forEach(({ key, values }) => {
@@ -128,21 +99,11 @@ const reduceFunction = (sortedData) => {
   // Lấy top 10 sản phẩm bán chạy
   reducedData.topSelling = reducedData.topSelling.slice(0, 10);
 
-  // Xử lý sản phẩm mới
-  sortedData.newProducts.forEach(({ values }) => {
-    reducedData.newProducts = values.map(item => ({
-      productId: item.productId,
-      productName: item.productName,
-      createdAt: item.createdAt,
-      categoryName: item.category ? item.category.name : "Không xác định",
-    }));
-  });
-
   return reducedData;
 };
 
-// OutputFormat: Cập nhật popularityRank vào Product và trả về sản phẩm mới
-const OutputFormat = async ({ topSelling, newProducts }) => {
+// OutputFormat: Cập nhật popularityRank vào Product
+const OutputFormat = async ({ topSelling }) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
@@ -163,6 +124,7 @@ const OutputFormat = async ({ topSelling, newProducts }) => {
 
     await session.commitTransaction();
     console.log("✅ Đã cập nhật sản phẩm bán chạy!");
+    return topSelling;
   } catch (error) {
     await session.abortTransaction();
     console.error("❌ Lỗi trong OutputFormat:", error);
@@ -170,9 +132,6 @@ const OutputFormat = async ({ topSelling, newProducts }) => {
   } finally {
     session.endSession();
   }
-
-  // Trả về kết quả (không lưu sản phẩm mới)
-  return { topSelling, newProducts };
 };
 
 // Reduce Phase
@@ -185,21 +144,21 @@ const ReducePhase = async (intermediateData) => {
 
 // Job Tracker
 const ProductJob = async () => {
-  console.log("🔄 JobTracker sản phẩm bắt đầu...");
+  console.log("🔄 JobTracker sản phẩm bán chạy bắt đầu...");
   try {
     const intermediateData = await MapPhase();
     const result = await ReducePhase(intermediateData);
-    console.log("✅ ProductJob sản phẩm hoàn tất!");
+    console.log("✅ ProductJob sản phẩm bán chạy hoàn tất!");
     return result; // Trả về kết quả để sử dụng (nếu cần)
   } catch (error) {
-    console.error("❌ Lỗi trong JobTracker sản phẩm:", error);
+    console.error("❌ Lỗi trong JobTracker sản phẩm bán chạy:", error);
     throw error;
   }
 };
 
 // Lên lịch JobTracker
 const scheduleProductJob = () => {
-  scheduleJob("* * * * *", async () => {
+  scheduleJob("0 0 * * *", async () => { // Chạy mỗi ngày lúc 00:00
     await ProductJob();
   });
 };

@@ -2,25 +2,24 @@ import express from "express";
 import Review from "../models/Review.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
-
+import User from "../models/User.js"; 
 const router = express.Router();
 
-// Middleware xác thực người dùng
 const authMiddleware = (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(" ")[1];
   if (!token) {
     return res.status(401).json({ message: "No token provided" });
   }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.userId = decoded.id; // Gán userId vào request để sử dụng sau
+    req.userId = decoded.id;
     next();
   } catch (error) {
     return res.status(401).json({ message: "Token không hợp lệ!" });
   }
 };
-
 // Get all reviews
 router.get("/", async (req, res) => {
   try {
@@ -100,19 +99,32 @@ router.put("/:id", authMiddleware, async (req, res) => {
 // Delete review
 router.delete("/:id", authMiddleware, async (req, res) => {
   try {
-    const review = await Review.findById(req.params.id);
-    if (!review) return res.status(404).json({ message: "Review not found" });
+    // Validate reviewId
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: "ID đánh giá không hợp lệ" });
+    }
 
-    // Kiểm tra quyền xóa (chỉ người tạo hoặc admin)
+    const review = await Review.findById(req.params.id);
+    if (!review) {
+      return res.status(404).json({ message: "Review not found" });
+    }
+
+    // Fetch the user to check permissions
     const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Check if the user is the review creator or an admin
     if (review.userId.toString() !== req.userId && user.role !== "admin") {
       return res.status(403).json({ message: "Bạn không có quyền xóa đánh giá này!" });
     }
 
     await Review.findByIdAndDelete(req.params.id);
-    res.json({ message: "Review deleted" });
+    return res.json({ message: "Review deleted" });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("Error deleting review:", err); // Log the error for debugging
+    return res.status(500).json({ message: "Lỗi server khi xóa đánh giá", error: err.message });
   }
 });
 

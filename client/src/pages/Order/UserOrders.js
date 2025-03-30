@@ -17,7 +17,7 @@ import {
   DialogActions,
   Button,
   TextField,
-  Rating, // Thêm Rating từ MUI
+  Rating,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import axios from "axios";
@@ -34,8 +34,8 @@ const UserOrders = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [selectedOrder, setSelectedOrder] = useState(null);
-  const [reviewDialogOpen, setReviewDialogOpen] = useState(false); // State cho dialog đánh giá
-  const [reviewData, setReviewData] = useState({ productId: "", rating: 0, comment: "" }); // Dữ liệu đánh giá
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [reviewData, setReviewData] = useState({ productId: "", rating: 0, comment: "" });
   const userId = localStorage.getItem("userId");
   const token = localStorage.getItem("token");
 
@@ -99,19 +99,16 @@ const UserOrders = () => {
     }
   };
 
-  // Hàm mở dialog đánh giá
   const handleOpenReviewDialog = (productId) => {
     setReviewData({ productId, rating: 0, comment: "" });
     setReviewDialogOpen(true);
   };
 
-  // Hàm đóng dialog đánh giá
   const handleCloseReviewDialog = () => {
     setReviewDialogOpen(false);
     setReviewData({ productId: "", rating: 0, comment: "" });
   };
 
-  // Hàm gửi đánh giá
   const handleSubmitReview = async () => {
     if (!reviewData.rating || !reviewData.comment) {
       alert("Vui lòng nhập đủ số sao và nội dung đánh giá!");
@@ -193,16 +190,6 @@ const UserOrders = () => {
                             Hủy đơn
                           </Button>
                         )}
-                        {order.status === "Đã giao" && (
-                          <Button
-                            variant="contained"
-                            color="primary"
-                            size="small"
-                            onClick={() => handleOpenReviewDialog(order.products[0].product._id)} // Giả sử đánh giá sản phẩm đầu tiên
-                          >
-                            Đánh giá
-                          </Button>
-                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -256,6 +243,17 @@ const UserOrders = () => {
                   {selectedOrder.products.map((item) => (
                     <li key={item.product._id}>
                       {item.product.name} - Số lượng: {item.quantity}
+                      {selectedOrder.status === "Đã giao" && (
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          size="small"
+                          onClick={() => handleOpenReviewDialog(item.product._id)}
+                          sx={{ ml: 2 }}
+                        >
+                          Đánh giá
+                        </Button>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -279,7 +277,7 @@ const UserOrders = () => {
                 onChange={(event, newValue) => {
                   setReviewData((prev) => ({ ...prev, rating: newValue }));
                 }}
-                precision={1} // Cho phép chọn nửa sao
+                precision={1}
               />
               <TextField
                 label="Nhận xét của bạn"

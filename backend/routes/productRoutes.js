@@ -30,24 +30,10 @@ const upload = multer({ storage });
 // Get all products
 router.get("/", async (req, res) => {
   try {
-    const { sort, limit = 8 } = req.query; // Thêm query parameters: sort và limit
     let query = Product.find()
       .populate("parentCategory", "name")
       .populate("subCategory", "name")
       .populate("supplier", "name");
-
-    // Sắp xếp theo tiêu chí
-    if (sort === "bestSelling") {
-      query = query
-        .where("popularityRank")
-        .gt(0) // Chỉ lấy sản phẩm có popularityRank > 0
-        .sort({ popularityRank: 1 }); // Sắp xếp theo popularityRank tăng dần
-    } else if (sort === "newest") {
-      query = query.sort({ createdAt: -1 }); // Sắp xếp theo createdAt giảm dần (mới nhất trước)
-    }
-
-    // Giới hạn số lượng sản phẩm
-    query = query.limit(parseInt(limit));
 
     const products = await query.exec();
 
@@ -73,7 +59,71 @@ router.get("/", async (req, res) => {
       .json({ message: "Lỗi server khi lấy sản phẩm!", error: error.message });
   }
 });
+// Get best-selling products
+router.get("/best-selling", async (req, res) => {
+  try {
+    const { limit = 8 } = req.query; // Mặc định lấy 8 sản phẩm
+    const products = await Product.find({ popularityRank: { $gt: 0 } }) // Lấy sản phẩm có rank > 0
+      .populate("parentCategory", "name")
+      .populate("subCategory", "name")
+      .populate("supplier", "name")
+      .sort({ popularityRank: 1 }) // Sắp xếp theo rank tăng dần
+      .limit(parseInt(limit));
 
+    const productsWithDiscount = await Promise.all(
+      products.map(async (product) => {
+        const discountResponse = await axios.get(
+          `http://localhost:5000/api/discounts/apply/${product._id}`
+        );
+        return {
+          ...product.toObject(),
+          originalPrice: discountResponse.data.originalPrice,
+          discountedPrice: discountResponse.data.discountedPrice,
+        };
+      })
+    );
+
+    res.json(productsWithDiscount);
+  } catch (error) {
+    console.error("❌ Lỗi lấy sản phẩm bán chạy:", error);
+    res
+      .status(500)
+      .json({ message: "Lỗi server khi lấy sản phẩm bán chạy!", error: error.message });
+  }
+});
+
+// Get newest products
+router.get("/newest", async (req, res) => {
+  try {
+    const { limit = 8 } = req.query; // Mặc định lấy 8 sản phẩm
+    const products = await Product.find()
+      .populate("parentCategory", "name")
+      .populate("subCategory", "name")
+      .populate("supplier", "name")
+      .sort({ createdAt: -1 }) // Sắp xếp theo ngày tạo mới nhất
+      .limit(parseInt(limit));
+
+    const productsWithDiscount = await Promise.all(
+      products.map(async (product) => {
+        const discountResponse = await axios.get(
+          `http://localhost:5000/api/discounts/apply/${product._id}`
+        );
+        return {
+          ...product.toObject(),
+          originalPrice: discountResponse.data.originalPrice,
+          discountedPrice: discountResponse.data.discountedPrice,
+        };
+      })
+    );
+
+    res.json(productsWithDiscount);
+  } catch (error) {
+    console.error("❌ Lỗi lấy sản phẩm mới:", error);
+    res
+      .status(500)
+      .json({ message: "Lỗi server khi lấy sản phẩm mới!", error: error.message });
+  }
+});
 // Get product by ID with details
 router.get("/:id", async (req, res) => {
   try {

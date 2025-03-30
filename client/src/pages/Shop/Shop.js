@@ -10,16 +10,15 @@ import {
   Button,
   Box,
   FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Checkbox,
   FormControlLabel,
+  Checkbox,
   Slider,
   Pagination,
   IconButton,
   Breadcrumbs,
   Link as MuiLink,
+  CircularProgress,
+  Collapse,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import axios from "axios";
@@ -28,9 +27,10 @@ import {
   ViewList as ViewListIcon,
   ViewModule as ViewModuleIcon,
   GridView as GridViewIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
 } from "@mui/icons-material";
 
-// Styled components
 const FilterBox = styled(Box)(({ theme }) => ({
   padding: theme.spacing(2),
   borderRight: "1px solid #e0e0e0",
@@ -47,35 +47,24 @@ const ProductCard = styled(Card)(({ theme }) => ({
   },
 }));
 
-const SortButton = styled(Button)(({ theme }) => ({
-  textTransform: "none",
-  fontWeight: "bold",
-  borderRadius: 20,
-  border: "1px solid #1976d2",
-  color: "#1976d2",
-  "&:hover": {
-    backgroundColor: "#1976d2",
-    color: "#fff",
-  },
-}));
-
 const Shop = () => {
-  const { categoryId } = useParams();
+  const { categoryId } = useParams(); // categoryId giờ có thể là "best-selling" hoặc "newest"
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
-  const [categoryName, setCategoryName] = useState(""); // Tên danh mục
+  const [categoryName, setCategoryName] = useState("");
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState(4);
   const [sortOption, setSortOption] = useState("default");
   const [priceRange, setPriceRange] = useState([0, 10000000]);
   const [inStock, setInStock] = useState(false);
   const [onSale, setOnSale] = useState(false);
-  const [selectedSubCategory, setSelectedSubCategory] = useState(null);
-  const [selectedSupplier, setSelectedSupplier] = useState(null);
+  const [selectedSubCategories, setSelectedSubCategories] = useState([]);
+  const [selectedSuppliers, setSelectedSuppliers] = useState([]);
   const [page, setPage] = useState(1);
+  const [showSuppliers, setShowSuppliers] = useState(true);
   const productsPerPage = 12;
 
   useEffect(() => {
@@ -85,38 +74,47 @@ const Shop = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Lấy sản phẩm
-      const productResponse = await axios.get("http://localhost:5000/api/products");
-      let fetchedProducts = productResponse.data;
-
-      if (categoryId) {
-        fetchedProducts = fetchedProducts.filter(
-          (product) =>
-            product.parentCategory._id === categoryId ||
-            product.subCategory?._id === categoryId
-        );
-
-        // Lấy tên danh mục
-        const categoryResponse = await axios.get(
-          `http://localhost:5000/api/categories/${categoryId}`
-        );
-        setCategoryName(categoryResponse.data.name);
+      let productResponse;
+      if (categoryId === "best-selling") {
+        productResponse = await axios.get("http://localhost:5000/api/products/best-selling");
+        setCategoryName("Sản phẩm bán chạy");
+        setSortOption("bestSelling");
+      } else if (categoryId === "newest") {
+        productResponse = await axios.get("http://localhost:5000/api/products/newest");
+        setCategoryName("Sản phẩm mới");
+        setSortOption("newest");
       } else {
-        setCategoryName("Tất cả sản phẩm");
+        productResponse = await axios.get("http://localhost:5000/api/products");
+        let fetchedProducts = productResponse.data;
+
+        if (categoryId) {
+          fetchedProducts = fetchedProducts.filter(
+            (product) =>
+              product.parentCategory._id === categoryId ||
+              product.subCategory?._id === categoryId
+          );
+          const categoryResponse = await axios.get(
+            `http://localhost:5000/api/categories/${categoryId}`
+          );
+          setCategoryName(categoryResponse.data.name);
+        } else {
+          setCategoryName("Tất cả sản phẩm");
+        }
+        productResponse.data = fetchedProducts;
       }
 
-      setProducts(fetchedProducts);
-      setFilteredProducts(fetchedProducts);
+      setProducts(productResponse.data);
+      setFilteredProducts(productResponse.data);
 
-      // Lấy danh mục con nếu có categoryId
-      if (categoryId) {
+      if (categoryId && categoryId !== "best-selling" && categoryId !== "newest") {
         const subCategoryResponse = await axios.get(
           `http://localhost:5000/api/categories/subcategories/${categoryId}`
         );
         setSubCategories(subCategoryResponse.data);
+      } else {
+        setSubCategories([]);
       }
 
-      // Lấy danh sách nhà cung cấp
       const supplierResponse = await axios.get("http://localhost:5000/api/suppliers");
       setSuppliers(supplierResponse.data);
     } catch (error) {
@@ -129,12 +127,16 @@ const Shop = () => {
   useEffect(() => {
     let result = [...products];
 
-    if (selectedSubCategory) {
-      result = result.filter((product) => product.subCategory?._id === selectedSubCategory);
+    if (selectedSubCategories.length > 0) {
+      result = result.filter((product) =>
+        selectedSubCategories.includes(product.subCategory?._id)
+      );
     }
 
-    if (selectedSupplier) {
-      result = result.filter((product) => product.supplier?._id === selectedSupplier);
+    if (selectedSuppliers.length > 0) {
+      result = result.filter((product) =>
+        selectedSuppliers.includes(product.supplier?._id)
+      );
     }
 
     result = result.filter(
@@ -146,21 +148,21 @@ const Shop = () => {
     }
 
     if (onSale) {
-      result = result.filter((product) => product.isFeature);
+      result = result.filter((product) => product.discountedPrice !== undefined);
     }
 
     switch (sortOption) {
       case "bestSelling":
-        result.sort((a, b) => b.stock - a.stock);
+        result.sort((a, b) => (b.popularityRank || 0) - (a.popularityRank || 0));
         break;
       case "newest":
         result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         break;
       case "priceAsc":
-        result.sort((a, b) => a.price - b.price);
+        result.sort((a, b) => (a.discountedPrice || a.price) - (b.discountedPrice || b.price));
         break;
       case "priceDesc":
-        result.sort((a, b) => b.price - a.price);
+        result.sort((a, b) => (b.discountedPrice || b.price) - (a.discountedPrice || a.price));
         break;
       default:
         break;
@@ -168,8 +170,8 @@ const Shop = () => {
 
     setFilteredProducts(result);
   }, [
-    selectedSubCategory,
-    selectedSupplier,
+    selectedSubCategories,
+    selectedSuppliers,
     priceRange,
     inStock,
     onSale,
@@ -189,13 +191,32 @@ const Shop = () => {
     setViewMode(mode);
   };
 
+  const handleSubCategoryChange = (subCategoryId) => {
+    setSelectedSubCategories((prev) =>
+      prev.includes(subCategoryId)
+        ? prev.filter((id) => id !== subCategoryId)
+        : [...prev, subCategoryId]
+    );
+  };
+
+  const handleSupplierChange = (supplierId) => {
+    setSelectedSuppliers((prev) =>
+      prev.includes(supplierId)
+        ? prev.filter((id) => id !== supplierId)
+        : [...prev, supplierId]
+    );
+  };
+
   if (loading) {
-    return <Box sx={{ display: "flex", justifyContent: "center", mt: 4 }}>Đang tải...</Box>;
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", mt: 4 }}>
+        <CircularProgress />
+      </Box>
+    );
   }
 
   return (
     <Container sx={{ mt: 4, mb: 4 }}>
-      {/* Breadcrumb */}
       <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 2 }}>
         <MuiLink component={Link} to="/" underline="hover" color="inherit">
           Trang chủ
@@ -215,38 +236,32 @@ const Shop = () => {
                 <Typography variant="h6" gutterBottom>
                   Danh mục con
                 </Typography>
-                <FormControl fullWidth sx={{ mb: 2 }}>
-                  <InputLabel>Danh mục</InputLabel>
-                  <Select
-                    value={selectedSubCategory || ""}
-                    onChange={(e) => setSelectedSubCategory(e.target.value)}
-                  >
-                    <MenuItem value="">Tất cả</MenuItem>
-                    {subCategories.map((sub) => (
-                      <MenuItem key={sub._id} value={sub._id}>
-                        {sub.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                {subCategories.map((sub) => (
+                  <FormControlLabel
+                    key={sub._id}
+                    control={
+                      <Checkbox
+                        checked={selectedSubCategories.includes(sub._id)}
+                        onChange={() => handleSubCategoryChange(sub._id)}
+                      />
+                    }
+                    label={sub.name}
+                  />
+                ))}
               </>
             )}
 
-            {selectedSubCategory && (
-              <>
-                <Typography variant="h6" gutterBottom>
-                  Tình trạng
-                </Typography>
-                <FormControlLabel
-                  control={<Checkbox checked={inStock} onChange={(e) => setInStock(e.target.checked)} />}
-                  label="Còn hàng"
-                />
-                <FormControlLabel
-                  control={<Checkbox checked={onSale} onChange={(e) => setOnSale(e.target.checked)} />}
-                  label="Đang giảm giá"
-                />
-              </>
-            )}
+            <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
+              Tình trạng
+            </Typography>
+            <FormControlLabel
+              control={<Checkbox checked={inStock} onChange={(e) => setInStock(e.target.checked)} />}
+              label="Còn hàng"
+            />
+            <FormControlLabel
+              control={<Checkbox checked={onSale} onChange={(e) => setOnSale(e.target.checked)} />}
+              label="Đang giảm giá"
+            />
 
             <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
               Giá (VNĐ)
@@ -257,26 +272,31 @@ const Shop = () => {
               valueLabelDisplay="auto"
               min={0}
               max={10000000}
-              step={100000}
+              step={10000} // Bước giá thay đổi thành 10,000 VNĐ
             />
 
-            <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
-              Nhà cung cấp
-            </Typography>
-            <FormControl fullWidth>
-              <InputLabel>Nhà cung cấp</InputLabel>
-              <Select
-                value={selectedSupplier || ""}
-                onChange={(e) => setSelectedSupplier(e.target.value)}
-              >
-                <MenuItem value="">Tất cả</MenuItem>
-                {suppliers.map((supplier) => (
-                  <MenuItem key={supplier._id} value={supplier._id}>
-                    {supplier.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Box display="flex" alignItems="center" sx={{ mt: 2 }}>
+              <Typography variant="h6" gutterBottom>
+                Nhà cung cấp
+              </Typography>
+              <IconButton onClick={() => setShowSuppliers(!showSuppliers)}>
+                {showSuppliers ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+              </IconButton>
+            </Box>
+            <Collapse in={showSuppliers}>
+              {suppliers.map((supplier) => (
+                <FormControlLabel
+                  key={supplier._id}
+                  control={
+                    <Checkbox
+                      checked={selectedSuppliers.includes(supplier._id)}
+                      onChange={() => handleSupplierChange(supplier._id)}
+                    />
+                  }
+                  label={supplier.name}
+                />
+              ))}
+            </Collapse>
           </FilterBox>
         </Grid>
 
@@ -298,20 +318,6 @@ const Shop = () => {
               <IconButton onClick={() => handleViewChange(4)}>
                 <GridViewIcon color={viewMode === 4 ? "primary" : "inherit"} />
               </IconButton>
-
-              <FormControl sx={{ ml: 2, minWidth: 150 }}>
-                <InputLabel>Sắp xếp theo</InputLabel>
-                <Select
-                  value={sortOption}
-                  onChange={(e) => setSortOption(e.target.value)}
-                >
-                  <MenuItem value="default">Mặc định</MenuItem>
-                  <MenuItem value="bestSelling">Bán chạy</MenuItem>
-                  <MenuItem value="newest">Mới nhất</MenuItem>
-                  <MenuItem value="priceAsc">Giá tăng dần</MenuItem>
-                  <MenuItem value="priceDesc">Giá giảm dần</MenuItem>
-                </Select>
-              </FormControl>
             </Box>
           </Box>
 
@@ -319,7 +325,10 @@ const Shop = () => {
             {currentProducts.map((product) => (
               <Grid item xs={12 / viewMode} key={product._id}>
                 <ProductCard>
-                  <Link to={`/product/${product._id}`} style={{ textDecoration: "none", color: "inherit" }}>
+                  <Link
+                    to={`/product/${product._id}`}
+                    style={{ textDecoration: "none", color: "inherit" }}
+                  >
                     <CardMedia
                       component="img"
                       height="200"
@@ -329,10 +338,29 @@ const Shop = () => {
                     <CardContent>
                       <Typography variant="h6" noWrap>
                         {product.name}
+                        {new Date(product.createdAt) >
+                          new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) && (
+                          <Typography
+                            component="span"
+                            color="error"
+                            sx={{ ml: 1, fontSize: "0.8rem" }}
+                          >
+                            Mới
+                          </Typography>
+                        )}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        {product.price.toLocaleString()} VNĐ
+                        {(product.discountedPrice || product.price).toLocaleString()} VNĐ
                       </Typography>
+                      {product.discountedPrice && (
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ textDecoration: "line-through" }}
+                        >
+                          {product.originalPrice.toLocaleString()} VNĐ
+                        </Typography>
+                      )}
                     </CardContent>
                   </Link>
                 </ProductCard>

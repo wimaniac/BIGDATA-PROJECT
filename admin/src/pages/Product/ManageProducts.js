@@ -46,7 +46,9 @@ const ManageProducts = () => {
 
   const fetchProducts = async () => {
     try {
-      const response = await axios.get("http://localhost:5000/api/products");
+      const response = await axios.get("http://localhost:5000/api/products", {
+        params: { limit: itemsPerPage }, 
+      });
       setProducts(response.data);
     } catch (error) {
       console.error("Lỗi lấy danh sách sản phẩm:", error);
@@ -139,6 +141,7 @@ const ManageProducts = () => {
     page * itemsPerPage
   );
 
+  
   return (
     <Container>
       <Typography variant="h4" gutterBottom>

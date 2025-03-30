@@ -16,6 +16,7 @@ import {
   Box,
   TextField,
   InputBase,
+  CircularProgress,
 } from "@mui/material";
 import { styled, alpha } from "@mui/material/styles";
 import {
@@ -24,20 +25,15 @@ import {
   AccountCircle as AccountCircleIcon,
   Menu as MenuIcon,
   ArrowForwardIos as ArrowForwardIosIcon,
-  ArrowDropDown as ArrowDropDownIcon,
 } from "@mui/icons-material";
 import axios from "axios";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Navigation, Pagination, Autoplay } from "swiper/modules";
-import { Link } from "react-router-dom";
-
-// Import CSS của Swiper
+import { Link, useNavigate } from "react-router-dom";
 import "swiper/css";
 import "swiper/css/navigation";
 import "swiper/css/pagination";
 import "swiper/css/autoplay";
-
-// Import hình ảnh banner và logo
 import banner1 from "./assets/banner1.jpg";
 import banner2 from "./assets/banner2.jpg";
 import banner3 from "./assets/banner3.jpg";
@@ -45,7 +41,6 @@ import logo from "./assets/logo.jpg";
 
 const banners = [banner1, banner2, banner3];
 
-// Tạo thanh tìm kiếm đẹp hơn
 const Search = styled("div")(({ theme }) => ({
   position: "relative",
   borderRadius: theme.shape.borderRadius,
@@ -83,28 +78,17 @@ const StyledViewAllButton = styled(Button)(({ theme }) => ({
   },
 }));
 
-const SearchBox = styled("div")(({ theme }) => ({
-  position: "relative",
-  borderRadius: theme.shape.borderRadius,
-  backgroundColor: alpha(theme.palette.common.black, 0.05),
-  "&:hover": {
-    backgroundColor: alpha(theme.palette.common.black, 0.1),
-  },
-  marginLeft: theme.spacing(2),
-  width: "40%",
-  [theme.breakpoints.down("sm")]: {
-    width: "100%",
-  },
-}));
-
 const Home = () => {
   const [bestSellers, setBestSellers] = useState([]);
   const [newProducts, setNewProducts] = useState([]);
+  const [loadingBestSellers, setLoadingBestSellers] = useState(true);
+  const [loadingNewProducts, setLoadingNewProducts] = useState(true);
   const [anchorEl, setAnchorEl] = useState(null);
   const [parentCategories, setParentCategories] = useState([]);
   const [childCategories, setChildCategories] = useState({});
   const [childAnchorEl, setChildAnchorEl] = useState(null);
   const [currentParentId, setCurrentParentId] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchBestSellers();
@@ -114,33 +98,37 @@ const Home = () => {
 
   const fetchBestSellers = async () => {
     try {
-      const response = await axios.get("http://localhost:5000/api/products", {
-        params: { sort: "bestSelling", limit: 8 },
+      setLoadingBestSellers(true);
+      const response = await axios.get("http://localhost:5000/api/products/best-selling", {
+        params: { limit: 8 },
       });
       setBestSellers(response.data);
     } catch (error) {
       console.error("Lỗi lấy sản phẩm bán chạy:", error);
       setBestSellers([]);
+    } finally {
+      setLoadingBestSellers(false);
     }
   };
 
   const fetchNewProducts = async () => {
     try {
-      const response = await axios.get("http://localhost:5000/api/products", {
-        params: { sort: "newest", limit: 8 },
+      setLoadingNewProducts(true);
+      const response = await axios.get("http://localhost:5000/api/products/newest", {
+        params: { limit: 8 },
       });
       setNewProducts(response.data);
     } catch (error) {
       console.error("Lỗi lấy sản phẩm mới:", error);
       setNewProducts([]);
+    } finally {
+      setLoadingNewProducts(false);
     }
   };
 
   const fetchParentCategories = async () => {
     try {
-      const response = await axios.get(
-        "http://localhost:5000/api/categories/parents"
-      );
+      const response = await axios.get("http://localhost:5000/api/categories/parents");
       setParentCategories(response.data);
     } catch (error) {
       console.error("Lỗi lấy danh mục cha:", error);
@@ -154,7 +142,7 @@ const Home = () => {
   const handleMenuClose = () => {
     setAnchorEl(null);
     setChildAnchorEl(null);
-    setChildCategories([]);
+    setChildCategories({});
     setCurrentParentId(null);
   };
 
@@ -178,7 +166,6 @@ const Home = () => {
 
   return (
     <Box>
-      {/* Banner Swiper */}
       <Swiper
         modules={[Navigation, Pagination, Autoplay]}
         spaceBetween={30}
@@ -199,142 +186,138 @@ const Home = () => {
         ))}
       </Swiper>
 
-      {/* Nội dung trang */}
       <Container sx={{ my: 4 }}>
-        {/* Best Sellers */}
-        <Box
-          display="flex"
-          justifyContent="space-between"
-          alignItems="center"
-          mb={2}
-        >
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
           <Typography variant="h5" sx={{ fontWeight: "bold" }}>
             Sản phẩm bán chạy
           </Typography>
           <StyledViewAllButton
             component={Link}
-            to="/shop?sort=bestSelling"
+            to="/shop/best-selling"
             endIcon={<ArrowForwardIosIcon fontSize="small" />}
           >
             Xem tất cả
           </StyledViewAllButton>
         </Box>
-        <Grid container spacing={3}>
-          {bestSellers.length > 0 ? (
-            bestSellers.map((product) => (
-              <Grid item xs={12} sm={6} md={3} key={product._id}>
-                <Card
-                  sx={{
-                    height: "100%",
-                    display: "flex",
-                    flexDirection: "column",
-                  }}
-                >
-                  <Link
-                    to={`/product/${product._id}`}
-                    style={{ textDecoration: "none", color: "inherit" }}
-                  >
-                    <CardMedia
-                      component="img"
-                      height="200"
-                      image={product.mainImage || "/assets/placeholder.jpg"}
-                      alt={product.name}
-                    />
-                    <CardContent>
-                      <Typography variant="h6" noWrap>
-                        {product.name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {product.discountedPrice || product.price} VND
-                      </Typography>
-                      {product.discountedPrice && (
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={{ textDecoration: "line-through" }}
-                        >
-                          {product.originalPrice} VND
+        {loadingBestSellers ? (
+          <Box display="flex" justifyContent="center" my={4}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <Grid container spacing={3}>
+            {bestSellers.length > 0 ? (
+              bestSellers.map((product) => (
+                <Grid item xs={12} sm={6} md={3} key={product._id}>
+                  <Card sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+                    <Link
+                      to={`/product/${product._id}`}
+                      style={{ textDecoration: "none", color: "inherit" }}
+                    >
+                      <CardMedia
+                        component="img"
+                        height="200"
+                        image={product.mainImage || "/assets/placeholder.jpg"}
+                        alt={product.name}
+                      />
+                      <CardContent>
+                        <Typography variant="h6" noWrap>
+                          {product.name}
                         </Typography>
-                      )}
-                    </CardContent>
-                  </Link>
-                </Card>
-              </Grid>
-            ))
-          ) : (
-            <Typography variant="body1" sx={{ my: 2 }}>
-              Không có sản phẩm bán chạy nào để hiển thị.
-            </Typography>
-          )}
-        </Grid>
+                        <Typography variant="body2" color="text.secondary">
+                          {(product.discountedPrice || product.price).toLocaleString()} VNĐ
+                        </Typography>
+                        {product.discountedPrice && (
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            sx={{ textDecoration: "line-through" }}
+                          >
+                            {product.originalPrice.toLocaleString()} VNĐ
+                          </Typography>
+                        )}
+                      </CardContent>
+                    </Link>
+                  </Card>
+                </Grid>
+              ))
+            ) : (
+              <Typography variant="body1" sx={{ my: 2 }}>
+                Không có sản phẩm bán chạy nào để hiển thị.
+              </Typography>
+            )}
+          </Grid>
+        )}
 
-        {/* New Products */}
-        <Box
-          display="flex"
-          justifyContent="space-between"
-          alignItems="center"
-          mt={4}
-          mb={2}
-        >
+        <Box display="flex" justifyContent="space-between" alignItems="center" mt={4} mb={2}>
           <Typography variant="h5" sx={{ fontWeight: "bold" }}>
             Sản phẩm mới
           </Typography>
           <StyledViewAllButton
             component={Link}
-            to="/shop?sort=newest"
+            to="/shop/newest"
             endIcon={<ArrowForwardIosIcon fontSize="small" />}
           >
             Xem tất cả
           </StyledViewAllButton>
         </Box>
-        <Grid container spacing={3}>
-          {newProducts.length > 0 ? (
-            newProducts.map((product) => (
-              <Grid item xs={12} sm={6} md={3} key={product._id}>
-                <Card
-                  sx={{
-                    height: "100%",
-                    display: "flex",
-                    flexDirection: "column",
-                  }}
-                >
-                  <Link
-                    to={`/product/${product._id}`}
-                    style={{ textDecoration: "none", color: "inherit" }}
-                  >
-                    <CardMedia
-                      component="img"
-                      height="200"
-                      image={product.mainImage || "/assets/placeholder.jpg"}
-                      alt={product.name}
-                    />
-                    <CardContent>
-                      <Typography variant="h6" noWrap>
-                        {product.name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {product.discountedPrice || product.price} VND
-                      </Typography>
-                      {product.discountedPrice && (
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={{ textDecoration: "line-through" }}
-                        >
-                          {product.originalPrice} VND
+        {loadingNewProducts ? (
+          <Box display="flex" justifyContent="center" my={4}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <Grid container spacing={3}>
+            {newProducts.length > 0 ? (
+              newProducts.map((product) => (
+                <Grid item xs={12} sm={6} md={3} key={product._id}>
+                  <Card sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+                    <Link
+                      to={`/product/${product._id}`}
+                      style={{ textDecoration: "none", color: "inherit" }}
+                    >
+                      <CardMedia
+                        component="img"
+                        height="200"
+                        image={product.mainImage || "/assets/placeholder.jpg"}
+                        alt={product.name}
+                      />
+                      <CardContent>
+                        <Typography variant="h6" noWrap>
+                          {product.name}
+                          {new Date(product.createdAt) >
+                            new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) && (
+                            <Typography
+                              component="span"
+                              color="error"
+                              sx={{ ml: 1, fontSize: "0.8rem" }}
+                            >
+                              Mới
+                            </Typography>
+                          )}
                         </Typography>
-                      )}
-                    </CardContent>
-                  </Link>
-                </Card>
-              </Grid>
-            ))
-          ) : (
-            <Typography variant="body1" sx={{ my: 2 }}>
-              Không có sản phẩm mới nào để hiển thị.
-            </Typography>
-          )}
-        </Grid>
+                        <Typography variant="body2" color="text.secondary">
+                          {(product.discountedPrice || product.price).toLocaleString()} VNĐ
+                        </Typography>
+                        {product.discountedPrice && (
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            sx={{ textDecoration: "line-through" }}
+                          >
+                            {product.originalPrice.toLocaleString()} VNĐ
+                          </Typography>
+                        )}
+                      </CardContent>
+                    </Link>
+                  </Card>
+                </Grid>
+              ))
+            ) : (
+              <Typography variant="body1" sx={{ my: 2 }}>
+                Không có sản phẩm mới nào để hiển thị.
+              </Typography>
+            )}
+          </Grid>
+        )}
       </Container>
     </Box>
   );

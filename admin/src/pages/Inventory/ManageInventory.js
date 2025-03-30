@@ -261,6 +261,7 @@ const ManageInventory = () => {
     return search === "" || removeAccents(item.productName).includes(search);
   });
 
+  
   return (
     <Container sx={{ mt: 4, mb: 6 }}>
       <Typography variant="h4" sx={{ fontWeight: "bold", mb: 3 }}>
