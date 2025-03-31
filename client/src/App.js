@@ -10,6 +10,7 @@ import Footer from "./components/Footer";
 import Shop from "./pages/Shop/Shop";
 import Checkout from "./components/Checkout";
 import UserOrders from "./pages/Order/UserOrders";
+import AccountInfo from "./components/AccountInfo";
 function App() {
   return (
     <Router>
@@ -23,6 +24,7 @@ function App() {
         <Route path="/shop/:categoryId?" element={<Shop />} />
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/orders" element={<UserOrders />} />
+        <Route path="/account" element={<AccountInfo />} />
       </Routes>
       <Footer />
     </Router>

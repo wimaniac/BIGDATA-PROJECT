@@ -137,7 +137,7 @@ const Header = () => {
   const [user, setUser] = useState(null);
   const [anchorUserEl, setAnchorUserEl] = useState(null);
   const [cartCount, setCartCount] = useState(0);
-  const token = localStorage.getItem("token"); // Lấy token ngoài useEffect để theo dõi thay đổi
+  const token = localStorage.getItem("token");
 
   const fetchUser = async () => {
     const userData = JSON.parse(localStorage.getItem("user"));
@@ -184,6 +184,8 @@ const Header = () => {
         console.error("Error fetching cart count:", error);
         setCartCount(0);
       }
+    } else {
+      setCartCount(0);
     }
   };
 
@@ -192,16 +194,21 @@ const Header = () => {
     fetchCategories();
     fetchCartCount();
 
+    const handleCartUpdated = (event) => {
+      const newCartCount = event.detail?.cartCount || 0;
+      setCartCount(newCartCount);
+    };
+
     window.addEventListener("storage", fetchUser);
     window.addEventListener("userUpdated", fetchUser);
-    window.addEventListener("cartUpdated", fetchCartCount);
+    window.addEventListener("cartUpdated", handleCartUpdated);
 
     return () => {
       window.removeEventListener("storage", fetchUser);
       window.removeEventListener("userUpdated", fetchUser);
-      window.removeEventListener("cartUpdated", fetchCartCount);
+      window.removeEventListener("cartUpdated", handleCartUpdated);
     };
-  }, [token]); // Thêm token vào dependency array
+  }, [token]);
 
   const fetchChildCategories = async (parentId) => {
     try {

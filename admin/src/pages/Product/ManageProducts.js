@@ -15,15 +15,14 @@ import {
   InputLabel,
   FormControl,
   Dialog,
-  DialogTitle,
   DialogContent,
   DialogActions,
   Rating,
-  Pagination, // Import Pagination
+  Pagination,
 } from "@mui/material";
 import { Edit, Delete, Add, Visibility } from "@mui/icons-material";
 import axios from "axios";
-import { useNavigate } from "react-router-dom"; // Import useNavigate
+import { useNavigate } from "react-router-dom";
 
 const ManageProducts = () => {
   const [products, setProducts] = useState([]);
@@ -36,18 +35,39 @@ const ManageProducts = () => {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
   const [page, setPage] = useState(1);
+  const [userRole, setUserRole] = useState(null); // Thêm state để lưu vai trò người dùng
   const itemsPerPage = 12;
   const navigate = useNavigate();
+
   useEffect(() => {
+    fetchUserRole(); // Lấy vai trò người dùng khi component mount
     fetchProducts();
     fetchCategories();
-    fetchSuppliers(); // Fetch suppliers
+    fetchSuppliers();
   }, []);
+
+  const fetchUserRole = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.get("http://localhost:5000/api/users/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setUserRole(response.data.role);
+    } catch (error) {
+      console.error("Lỗi lấy thông tin người dùng:", error);
+      if (error.response?.status === 401) {
+        alert("Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại!");
+        navigate("/login");
+      }
+    }
+  };
 
   const fetchProducts = async () => {
     try {
+      const token = localStorage.getItem("token");
       const response = await axios.get("http://localhost:5000/api/products", {
-        params: { limit: itemsPerPage }, 
+        headers: { Authorization: `Bearer ${token}` },
+        params: { limit: itemsPerPage },
       });
       setProducts(response.data);
     } catch (error) {
@@ -57,10 +77,8 @@ const ManageProducts = () => {
 
   const fetchCategories = async () => {
     try {
-      const parentRes = await axios.get(
-        "http://localhost:5000/api/categories/parents"
-      );
-      setCategories(parentRes.data);
+      const response = await axios.get("http://localhost:5000/api/categories/parents");
+      setCategories(response.data);
     } catch (error) {
       console.error("Lỗi lấy danh mục cha:", error);
     }
@@ -75,7 +93,7 @@ const ManageProducts = () => {
         );
         allSubcategories.push(...response.data);
       }
-      setSubcategories(allSubcategories); // Lưu tất cả danh mục con vào state
+      setSubcategories(allSubcategories);
     } catch (error) {
       console.error("Lỗi lấy danh mục con:", error);
     }
@@ -93,10 +111,14 @@ const ManageProducts = () => {
   const handleDelete = async (id) => {
     if (window.confirm("Bạn có chắc chắn muốn xóa sản phẩm này?")) {
       try {
-        await axios.delete(`http://localhost:5000/api/products/${id}`);
+        const token = localStorage.getItem("token");
+        await axios.delete(`http://localhost:5000/api/products/${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         fetchProducts();
       } catch (error) {
         console.error("Lỗi xóa sản phẩm:", error);
+        alert("Không thể xóa sản phẩm: " + (error.response?.data?.message || error.message));
       }
     }
   };
@@ -114,9 +136,7 @@ const ManageProducts = () => {
   };
 
   const filteredProducts = products
-    .filter((product) =>
-      product.name.toLowerCase().includes(search.toLowerCase())
-    )
+    .filter((product) => product.name.toLowerCase().includes(search.toLowerCase()))
     .filter((product) =>
       categoryFilter.length > 0
         ? categoryFilter.includes(product.parentCategory?._id?.toString())
@@ -141,14 +161,12 @@ const ManageProducts = () => {
     page * itemsPerPage
   );
 
-  
   return (
     <Container>
       <Typography variant="h4" gutterBottom>
         Quản lý sản phẩm
       </Typography>
 
-      {/* Thanh tìm kiếm */}
       <TextField
         label="Tìm kiếm sản phẩm..."
         variant="outlined"
@@ -158,15 +176,13 @@ const ManageProducts = () => {
         onChange={(e) => setSearch(e.target.value)}
       />
 
-      {/* Bộ lọc danh mục */}
-      {/* Bộ lọc danh mục chính */}
       <FormControl fullWidth sx={{ mb: 2 }}>
         <InputLabel>Chọn danh mục chính</InputLabel>
         <Select
           multiple
           value={categoryFilter}
           onChange={(e) => {
-            const selectedIds = e.target.value.map((id) => id.toString()); // Đảm bảo ID là String
+            const selectedIds = e.target.value.map((id) => id.toString());
             setCategoryFilter(selectedIds);
             setSubcategoryFilter([]);
             fetchSubcategories(selectedIds);
@@ -186,15 +202,10 @@ const ManageProducts = () => {
         </Select>
       </FormControl>
 
-      {/* Bộ lọc danh mục con */}
-      <FormControl
-        fullWidth
-        sx={{ mb: 2 }}
-        disabled={categoryFilter.length === 0}
-      >
+      <FormControl fullWidth sx={{ mb: 2 }} disabled={categoryFilter.length === 0}>
         <InputLabel>Chọn danh mục phụ</InputLabel>
         <Select
-          multiple // Cho phép chọn nhiều danh mục con
+          multiple
           value={subcategoryFilter}
           onChange={(e) => setSubcategoryFilter(e.target.value)}
           renderValue={(selected) =>
@@ -212,37 +223,29 @@ const ManageProducts = () => {
         </Select>
       </FormControl>
 
-      {/* Bộ lọc sắp xếp */}
       <FormControl fullWidth sx={{ mb: 2 }}>
         <InputLabel>Sắp xếp theo</InputLabel>
-        <Select
-          value={sortFilter}
-          onChange={(e) => setSortFilter(e.target.value)}
-        >
+        <Select value={sortFilter} onChange={(e) => setSortFilter(e.target.value)}>
           <MenuItem value="">Tất cả</MenuItem>
           <MenuItem value="Mới nhất">Mới nhất</MenuItem>
           <MenuItem value="Cũ nhất">Cũ nhất</MenuItem>
         </Select>
       </FormControl>
 
-      {/* Nút thêm sản phẩm */}
       <Button
         variant="contained"
         color="primary"
         startIcon={<Add />}
         sx={{ mb: 3 }}
-        onClick={() => navigate("/manage-add-product")} // Correct navigation function
+        onClick={() => navigate("/manage-add-product")}
       >
         Thêm sản phẩm
       </Button>
 
-      {/* Hiển thị danh sách sản phẩm */}
       <Grid container spacing={3}>
         {paginatedProducts.map((product) => (
           <Grid item xs={12} sm={6} md={3} key={product._id}>
-            <Card
-              sx={{ height: "100%", display: "flex", flexDirection: "column" }}
-            >
+            <Card sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
               <CardMedia
                 component="img"
                 height="200"
@@ -264,13 +267,8 @@ const ManageProducts = () => {
                   {product.description}
                 </Typography>
                 <Typography variant="body1" color="text.secondary">
-                  {product.discountedPrice < product.originalPrice && (
-                    <span
-                      style={{
-                        textDecoration: "line-through",
-                        marginRight: "8px",
-                      }}
-                    >
+                  {product.isDiscounted && (
+                    <span style={{ textDecoration: "line-through", marginRight: "8px" }}>
                       {product.originalPrice.toLocaleString()} VNĐ
                     </span>
                   )}
@@ -278,27 +276,30 @@ const ManageProducts = () => {
                     {product.discountedPrice.toLocaleString()} VNĐ
                   </span>
                 </Typography>
+                <Rating
+                  value={product.ratings || 0}
+                  readOnly
+                  precision={0.5}
+                  size="small"
+                  sx={{ mt: 1 }}
+                />
               </CardContent>
               <CardActions>
-                <IconButton
-                  color="primary"
-                  onClick={() =>
-                    navigate(`/manage-edit-product/${product._id}`)
-                  }
-                >
-                  <Edit />
-                </IconButton>
-
-                <IconButton
-                  color="error"
-                  onClick={() => handleDelete(product._id)}
-                >
-                  <Delete />
-                </IconButton>
-                <IconButton
-                  color="default"
-                  onClick={() => handleViewDetails(product)}
-                >
+                {/* Chỉ hiển thị nút Edit và Delete nếu không phải sales */}
+                {userRole !== "sales" && (
+                  <>
+                    <IconButton
+                      color="primary"
+                      onClick={() => navigate(`/manage-edit-product/${product._id}`)}
+                    >
+                      <Edit />
+                    </IconButton>
+                    <IconButton color="error" onClick={() => handleDelete(product._id)}>
+                      <Delete />
+                    </IconButton>
+                  </>
+                )}
+                <IconButton color="default" onClick={() => handleViewDetails(product)}>
                   <Visibility />
                 </IconButton>
               </CardActions>
@@ -307,7 +308,6 @@ const ManageProducts = () => {
         ))}
       </Grid>
 
-      {/* Pagination */}
       <Pagination
         count={Math.ceil(filteredProducts.length / itemsPerPage)}
         page={page}
@@ -315,17 +315,10 @@ const ManageProducts = () => {
         sx={{ mt: 3, display: "flex", justifyContent: "center" }}
       />
 
-      {/* Dialog xem chi tiết sản phẩm */}
-      <Dialog
-        open={!!selectedProduct}
-        onClose={handleCloseDialog}
-        maxWidth="md"
-        fullWidth
-      >
+      <Dialog open={!!selectedProduct} onClose={handleCloseDialog} maxWidth="md" fullWidth>
         <DialogContent>
           {selectedProduct && (
             <>
-              {/* Ảnh chính + ảnh phụ */}
               <div
                 style={{
                   display: "flex",
@@ -334,7 +327,6 @@ const ManageProducts = () => {
                   gap: "15px",
                 }}
               >
-                {/* Ảnh chính */}
                 <CardMedia
                   component="img"
                   height="350"
@@ -350,10 +342,7 @@ const ManageProducts = () => {
                   }
                   alt={selectedProduct.name}
                 />
-
-                {/* Ảnh phụ hiển thị dạng lưới */}
                 <Grid container spacing={1} justifyContent="center">
-                  {/* Ảnh chính được đưa vào danh sách ảnh phụ */}
                   {[
                     selectedProduct.mainImage,
                     ...(selectedProduct.additionalImages || []),
@@ -376,10 +365,7 @@ const ManageProducts = () => {
                         image={img}
                         alt={`Ảnh ${index}`}
                         onClick={() =>
-                          setSelectedProduct({
-                            ...selectedProduct,
-                            displayImage: img,
-                          })
+                          setSelectedProduct({ ...selectedProduct, displayImage: img })
                         }
                       />
                     </Grid>
@@ -387,13 +373,11 @@ const ManageProducts = () => {
                 </Grid>
               </div>
 
-              {/* Thông tin sản phẩm */}
               <Typography variant="h5" sx={{ mt: 3 }}>
                 {selectedProduct.name}
               </Typography>
               <Typography>
-                <strong>Giá:</strong> {selectedProduct.price.toLocaleString()}{" "}
-                VNĐ
+                <strong>Giá:</strong> {selectedProduct.price.toLocaleString()} VNĐ
               </Typography>
               <Typography>
                 <strong>Danh mục chính:</strong>{" "}
@@ -416,21 +400,18 @@ const ManageProducts = () => {
               <Typography>
                 <strong>Đánh giá:</strong>
                 <Rating
-                  value={selectedProduct.rating || 0}
+                  value={selectedProduct.ratings || 0}
                   readOnly
                   size="small"
                   sx={{ verticalAlign: "middle" }}
                 />
               </Typography>
-              {/* Mô tả sản phẩm */}
               <Typography variant="h6" sx={{ mt: 3 }}>
                 Mô tả sản phẩm
               </Typography>
               <Typography color="text.secondary">
                 {selectedProduct.description || "Không có mô tả"}
               </Typography>
-
-              {/* Thông tin chi tiết */}
               <Typography variant="h6" sx={{ mt: 3 }}>
                 Thông tin chi tiết
               </Typography>

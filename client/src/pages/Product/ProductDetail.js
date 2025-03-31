@@ -100,7 +100,13 @@ const ProductDetail = () => {
         productId: id,
         quantity,
       });
-      console.log("Thêm vào giỏ hàng thành công:", response.data);
+      const updatedCart = response.data.cart || null;
+      const totalItems =
+        updatedCart?.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
+      window.dispatchEvent(
+        new CustomEvent("cartUpdated", { detail: { cartCount: totalItems } })
+      );
+
       setSnackbarOpen(true);
       setTimeout(() => navigate("/cart"), 1500);
     } catch (error) {

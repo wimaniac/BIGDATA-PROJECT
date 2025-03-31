@@ -5,34 +5,29 @@ import Product from "../models/Product.js";
 import { scheduleJob } from "node-schedule";
 
 // JobTracker: Quản lý công việc
-const InventoryJob  = async () => {
+const InventoryJob = async () => {
   console.log("🔄 JobTracker quản lý tồn kho bắt đầu...");
 
   try {
     // Map Phase
-    const mappedData = await MapPhase();
-
-    // Partition Phase
-    const partitionedData = PartitionPhase(mappedData);
-
-    // Combine Phase
-    const combinedData = CombinePhase(partitionedData);
+    const intermediateData = await MapPhase();
 
     // Reduce Phase
-    const { regionResults, productStock } = await ReducePhase(combinedData);
+    const finalData = await ReducePhase(intermediateData);
 
     // Output Phase
-    await OutputPhase(regionResults, productStock);
+    await OutputFormat(finalData);
 
     console.log("✅ JobTracker hoàn tất!");
   } catch (error) {
     console.error("❌ Lỗi JobTracker:", error);
+    throw error;
   }
 };
 
-// **Map Phase: Thu thập dữ liệu và ánh xạ key-value**
-const MapPhase = async () => {
-  const orders = await Order.find({ status: { $in: ["Đang xử lí", "Đã giao"] } })
+// **InputFormat: Thu thập dữ liệu từ "DFS" (các collection trong MongoDB)**
+const InputFormat = async () => {
+  const orders = await Order.find({ status: "Đã giao" })
     .populate("products.product", "name")
     .populate("products.warehouse", "name")
     .lean();
@@ -44,83 +39,108 @@ const MapPhase = async () => {
 
   const products = await Product.find().lean();
 
-  let mappedData = [];
+  return { orders, inventoryItems, products };
+};
+
+// **Map Function: Ánh xạ dữ liệu thành key-value pairs**
+const mapFunction = (data) => {
+  const { orders, inventoryItems, products } = data;
+  let keyValuePairs = [];
 
   // TaskTracker M1: Xử lý Orders
   orders.forEach((order) => {
     order.products.forEach((item) => {
-      mappedData.push({
-        key: `${item.product._id}-${item.warehouse._id}`,
+      keyValuePairs.push({
+        key: `${item.product._id}-${item.warehouse ? item.warehouse._id : "no-warehouse"}`,
         value: { type: "order", quantity: item.quantity, orderId: order._id },
       });
     });
   });
 
   // TaskTracker M2: Xử lý Inventory
-  mappedData.push(
-    ...inventoryItems.map((item) => ({
+  inventoryItems.forEach((item) => {
+    keyValuePairs.push({
       key: `${item.product._id}-${item.warehouse._id}`,
       value: { type: "inventory", quantity: item.quantity, inventoryId: item._id },
-    }))
-  );
+    });
+  });
 
   // TaskTracker M3: Xử lý Product
-  mappedData.push(
-    ...products.map((product) => ({
+  products.forEach((product) => {
+    keyValuePairs.push({
       key: `${product._id}`,
       value: { type: "product", stock: product.stock, productId: product._id },
-    }))
-  );
-
-  return mappedData;
-};
-
-// **Partition Phase: Nhóm dữ liệu theo key**
-const PartitionPhase = (mappedData) => {
-  const partitioned = {};
-  mappedData.forEach(({ key, value }) => {
-    if (!partitioned[key]) {
-      partitioned[key] = [];
-    }
-    partitioned[key].push(value);
+    });
   });
-  return partitioned;
+
+  return keyValuePairs;
 };
 
-// **Combine Phase: Tổng hợp dữ liệu trong từng nhóm**
-const CombinePhase = (partitionedData) => {
-  const combined = {};
+// **Partition Function: Nhóm dữ liệu theo key**
+const partitionFunction = (keyValuePairs) => {
+  const partitionedData = {};
+  keyValuePairs.forEach(({ key, value }) => {
+    if (!partitionedData[key]) {
+      partitionedData[key] = [];
+    }
+    partitionedData[key].push(value);
+  });
+  return partitionedData;
+};
+
+// **Combine Function: Tổng hợp dữ liệu trong từng nhóm (trong RAM)**
+const combineFunction = (partitionedData) => {
+  const combinedData = {};
   for (const key in partitionedData) {
-    combined[key] = { orders: [], inventory: null, product: null };
+    combinedData[key] = { orders: [], inventory: null, product: null };
     partitionedData[key].forEach((value) => {
       if (value.type === "order") {
-        combined[key].orders.push(value);
+        combinedData[key].orders.push(value);
       } else if (value.type === "inventory") {
-        combined[key].inventory = value;
+        combinedData[key].inventory = value;
       } else if (value.type === "product") {
-        combined[key].product = value;
+        combinedData[key].product = value;
       }
     });
   }
-  return combined;
+  return combinedData;
 };
 
-// **Reduce Phase: Xử lý tồn kho**
-const ReducePhase = async (combinedData) => {
+// **Map Phase: Thực hiện InputFormat, map(), partition(), combine()**
+const MapPhase = async () => {
+  const inputData = await InputFormat();
+  const keyValuePairs = mapFunction(inputData);
+  const partitionedData = partitionFunction(keyValuePairs);
+  const combinedData = combineFunction(partitionedData);
+  return combinedData;
+};
+
+// **Sort Function: Sắp xếp dữ liệu trước khi reduce**
+const sortFunction = (combinedData) => {
+  const sortedData = {};
+  for (const key in combinedData) {
+    sortedData[key] = combinedData[key];
+    if (sortedData[key].orders.length > 0) {
+      sortedData[key].orders.sort((a, b) => a.orderId.localeCompare(b.orderId));
+    }
+  }
+  return sortedData;
+};
+
+// **Reduce Function: Xử lý dữ liệu đã được tổng hợp**
+const reduceFunction = (sortedData) => {
   let regionResults = {};
   let productStock = {};
 
-  for (const key in combinedData) {
-    const { orders, inventory, product } = combinedData[key];
+  for (const key in sortedData) {
+    const { orders, inventory, product } = sortedData[key];
 
     if (product) {
-      // TaskTracker R1: Xử lý stock trong Product
       regionResults[key] = {
         productId: key,
         initialStock: product.stock,
       };
     } else {
-      // TaskTracker R2: Xử lý số lượng tồn kho tại các kho hàng
       const [productId, warehouseId] = key.split("-");
       const totalOrdered = orders.reduce((sum, order) => sum + order.quantity, 0);
       const currentQuantity = inventory ? inventory.quantity : 0;
@@ -144,39 +164,61 @@ const ReducePhase = async (combinedData) => {
   return { regionResults, productStock };
 };
 
-// **Output Phase: Cập nhật Inventory & Product**
-const OutputPhase = async (regionResults, productStock) => {
+// **Reduce Phase: Đọc dữ liệu từ "DFS", sort, reduce**
+const ReducePhase = async (intermediateData) => {
+  const sortedData = sortFunction(intermediateData);
+  const reducedData = reduceFunction(sortedData);
+  return reducedData;
+};
+
+// **OutputFormat: Ghi kết quả cuối cùng vào "DFS" (cập nhật MongoDB)**
+const OutputFormat = async (finalData) => {
+  const { regionResults, productStock } = finalData;
   const session = await mongoose.startSession();
-  session.startTransaction();
 
   try {
-    // Cập nhật Inventory
-    const inventoryUpdates = Object.keys(regionResults)
-      .filter((key) => key.includes("-"))
-      .map(async (key) => {
-        const { inventoryId, finalQuantity, productId, warehouseId } = regionResults[key];
-        if (inventoryId) {
-          return Inventory.findByIdAndUpdate(inventoryId, { quantity: finalQuantity }, { new: true });
-        } else {
-          const newInventory = new Inventory({ product: productId, warehouse: warehouseId, quantity: finalQuantity });
-          return newInventory.save();
-        }
+    await session.withTransaction(async () => {
+      // Cập nhật Inventory
+      const inventoryUpdates = Object.keys(regionResults)
+        .filter((key) => key.includes("-"))
+        .map(async (key) => {
+          const { inventoryId, finalQuantity, productId, warehouseId } = regionResults[key];
+          if (inventoryId) {
+            return await Inventory.findByIdAndUpdate(
+              inventoryId,
+              { quantity: finalQuantity, lastUpdated: Date.now() },
+              { new: true, session }
+            );
+          } else {
+            const product = await Product.findById(productId).session(session);
+            const newInventory = new Inventory({
+              product: productId,
+              warehouse: warehouseId === "no-warehouse" ? null : warehouseId,
+              quantity: finalQuantity,
+              price: product.price,
+              category: product.parentCategory,
+            });
+            return await newInventory.save({ session });
+          }
+        });
+
+      await Promise.all(inventoryUpdates);
+      console.log("✅ Inventory đã được cập nhật.");
+
+      // Cập nhật Product stock
+      const productUpdates = Object.keys(productStock).map(async (productId) => {
+        return await Product.findByIdAndUpdate(
+          productId,
+          { stock: productStock[productId] },
+          { new: true, session }
+        );
       });
 
-    await Promise.all(inventoryUpdates);
-    console.log("✅ Inventory đã được cập nhật.");
-
-    // Cập nhật Product stock
-    const productUpdates = Object.keys(productStock).map((productId) =>
-      Product.findByIdAndUpdate(productId, { stock: productStock[productId] }, { new: true })
-    );
-
-    await Promise.all(productUpdates);
-    console.log("✅ Product stock đã được cập nhật.");
-
-    await session.commitTransaction();
+      await Promise.all(productUpdates);
+      console.log("✅ Product stock đã được cập nhật.");
+    });
   } catch (error) {
-    await session.abortTransaction();
+    console.error("❌ Lỗi trong OutputFormat:", error);
     throw error;
   } finally {
     session.endSession();
@@ -185,9 +227,9 @@ const OutputPhase = async (regionResults, productStock) => {
 
 // ⏰ Lên lịch chạy JobTracker
 const scheduleInventoryJob = () => {
-  scheduleJob("* * * * *", async () => {
+  scheduleJob("* * * *", async () => {
     await InventoryJob();
   });
 };
 
-export { InventoryJob , scheduleInventoryJob };
+export { InventoryJob, scheduleInventoryJob };

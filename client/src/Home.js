@@ -17,6 +17,9 @@ import {
   TextField,
   InputBase,
   CircularProgress,
+  Rating,
+  Snackbar,
+  Alert,
 } from "@mui/material";
 import { styled, alpha } from "@mui/material/styles";
 import {
@@ -41,6 +44,7 @@ import logo from "./assets/logo.jpg";
 
 const banners = [banner1, banner2, banner3];
 
+// Các styled components giữ nguyên như trước
 const Search = styled("div")(({ theme }) => ({
   position: "relative",
   borderRadius: theme.shape.borderRadius,
@@ -78,6 +82,18 @@ const StyledViewAllButton = styled(Button)(({ theme }) => ({
   },
 }));
 
+const AddToCartButton = styled(Button)(({ theme }) => ({
+  marginTop: theme.spacing(1),
+  borderRadius: 20,
+  textTransform: "none",
+  fontWeight: "bold",
+  backgroundColor: "#1976d2",
+  color: "#fff",
+  "&:hover": {
+    backgroundColor: "#1565c0",
+  },
+}));
+
 const Home = () => {
   const [bestSellers, setBestSellers] = useState([]);
   const [newProducts, setNewProducts] = useState([]);
@@ -88,6 +104,11 @@ const Home = () => {
   const [childCategories, setChildCategories] = useState({});
   const [childAnchorEl, setChildAnchorEl] = useState(null);
   const [currentParentId, setCurrentParentId] = useState(null);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: "",
+    severity: "success",
+  });
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -99,9 +120,12 @@ const Home = () => {
   const fetchBestSellers = async () => {
     try {
       setLoadingBestSellers(true);
-      const response = await axios.get("http://localhost:5000/api/products/best-selling", {
-        params: { limit: 8 },
-      });
+      const response = await axios.get(
+        "http://localhost:5000/api/products/best-selling",
+        {
+          params: { limit: 8 },
+        }
+      );
       setBestSellers(response.data);
     } catch (error) {
       console.error("Lỗi lấy sản phẩm bán chạy:", error);
@@ -114,9 +138,12 @@ const Home = () => {
   const fetchNewProducts = async () => {
     try {
       setLoadingNewProducts(true);
-      const response = await axios.get("http://localhost:5000/api/products/newest", {
-        params: { limit: 8 },
-      });
+      const response = await axios.get(
+        "http://localhost:5000/api/products/newest",
+        {
+          params: { limit: 8 },
+        }
+      );
       setNewProducts(response.data);
     } catch (error) {
       console.error("Lỗi lấy sản phẩm mới:", error);
@@ -128,7 +155,9 @@ const Home = () => {
 
   const fetchParentCategories = async () => {
     try {
-      const response = await axios.get("http://localhost:5000/api/categories/parents");
+      const response = await axios.get(
+        "http://localhost:5000/api/categories/parents"
+      );
       setParentCategories(response.data);
     } catch (error) {
       console.error("Lỗi lấy danh mục cha:", error);
@@ -164,6 +193,59 @@ const Home = () => {
     setCurrentParentId(null);
   };
 
+  const handleAddToCart = async (productId) => {
+    const token = localStorage.getItem("token");
+    const userId = localStorage.getItem("userId");
+
+    if (!token || !userId) {
+      setSnackbar({
+        open: true,
+        message: "Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng!",
+        severity: "warning",
+      });
+      setTimeout(() => navigate("/login"), 1500);
+      return;
+    }
+
+    try {
+      const response = await axios.post(
+        "http://localhost:5000/api/cart/add",
+        {
+          userId,
+          productId,
+          quantity: 1,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      const updatedCart = response.data.cart || null;
+      const totalItems =
+        updatedCart?.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
+      window.dispatchEvent(
+        new CustomEvent("cartUpdated", { detail: { cartCount: totalItems } })
+      );
+
+      setSnackbar({
+        open: true,
+        message: "Đã thêm sản phẩm vào giỏ hàng!",
+        severity: "success",
+      });
+    } catch (error) {
+      console.error("Lỗi khi thêm vào giỏ hàng:", error);
+      setSnackbar({
+        open: true,
+        message: "Có lỗi xảy ra khi thêm sản phẩm vào giỏ hàng!",
+        severity: "error",
+      });
+    }
+  };
+
+  const handleSnackbarClose = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
+
   return (
     <Box>
       <Swiper
@@ -187,7 +269,12 @@ const Home = () => {
       </Swiper>
 
       <Container sx={{ my: 4 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Box
+          display="flex"
+          justifyContent="space-between"
+          alignItems="center"
+          mb={2}
+        >
           <Typography variant="h5" sx={{ fontWeight: "bold" }}>
             Sản phẩm bán chạy
           </Typography>
@@ -208,7 +295,14 @@ const Home = () => {
             {bestSellers.length > 0 ? (
               bestSellers.map((product) => (
                 <Grid item xs={12} sm={6} md={3} key={product._id}>
-                  <Card sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+                  <Card
+                    sx={{
+                      height: "100%",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between", // Đảm bảo nút luôn ở dưới
+                    }}
+                  >
                     <Link
                       to={`/product/${product._id}`}
                       style={{ textDecoration: "none", color: "inherit" }}
@@ -219,24 +313,53 @@ const Home = () => {
                         image={product.mainImage || "/assets/placeholder.jpg"}
                         alt={product.name}
                       />
-                      <CardContent>
+                      <CardContent sx={{ flexGrow: 1 }}>
                         <Typography variant="h6" noWrap>
                           {product.name}
                         </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {(product.discountedPrice || product.price).toLocaleString()} VNĐ
-                        </Typography>
-                        {product.discountedPrice && (
+                        <Rating
+                          value={product.ratings || 0}
+                          readOnly
+                          precision={0.5}
+                          size="small"
+                          sx={{ my: 1 }}
+                        />
+                        {product.isDiscounted ? (
+                          <>
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{ textDecoration: "line-through" }}
+                            >
+                              {product.originalPrice.toLocaleString()} VNĐ
+                            </Typography>
+                            <Typography
+                              variant="body1"
+                              color="error"
+                              sx={{ fontWeight: "bold" }}
+                            >
+                              {product.discountedPrice.toLocaleString()} VNĐ
+                            </Typography>
+                          </>
+                        ) : (
                           <Typography
-                            variant="body2"
-                            color="text.secondary"
-                            sx={{ textDecoration: "line-through" }}
+                            variant="body1"
+                            sx={{ fontWeight: "bold" }}
                           >
                             {product.originalPrice.toLocaleString()} VNĐ
                           </Typography>
                         )}
                       </CardContent>
                     </Link>
+                    <Box sx={{ p: 2 }}>
+                      <AddToCartButton
+                        fullWidth
+                        variant="contained"
+                        onClick={() => handleAddToCart(product._id)}
+                      >
+                        Thêm vào giỏ hàng
+                      </AddToCartButton>
+                    </Box>
                   </Card>
                 </Grid>
               ))
@@ -248,7 +371,13 @@ const Home = () => {
           </Grid>
         )}
 
-        <Box display="flex" justifyContent="space-between" alignItems="center" mt={4} mb={2}>
+        <Box
+          display="flex"
+          justifyContent="space-between"
+          alignItems="center"
+          mt={4}
+          mb={2}
+        >
           <Typography variant="h5" sx={{ fontWeight: "bold" }}>
             Sản phẩm mới
           </Typography>
@@ -269,7 +398,14 @@ const Home = () => {
             {newProducts.length > 0 ? (
               newProducts.map((product) => (
                 <Grid item xs={12} sm={6} md={3} key={product._id}>
-                  <Card sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+                  <Card
+                    sx={{
+                      height: "100%",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between", 
+                    }}
+                  >
                     <Link
                       to={`/product/${product._id}`}
                       style={{ textDecoration: "none", color: "inherit" }}
@@ -280,45 +416,79 @@ const Home = () => {
                         image={product.mainImage || "/assets/placeholder.jpg"}
                         alt={product.name}
                       />
-                      <CardContent>
+                      <CardContent sx={{ flexGrow: 1 }}>
                         <Typography variant="h6" noWrap>
                           {product.name}
-                          {new Date(product.createdAt) >
-                            new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) && (
+                        </Typography>
+                        <Rating
+                          value={product.ratings || 0}
+                          readOnly
+                          precision={0.5}
+                          size="small"
+                          sx={{ my: 1 }}
+                        />
+                        {product.isDiscounted ? (
+                          <>
                             <Typography
-                              component="span"
-                              color="error"
-                              sx={{ ml: 1, fontSize: "0.8rem" }}
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{ textDecoration: "line-through" }}
                             >
-                              Mới
+                              {product.originalPrice.toLocaleString()} VNĐ
                             </Typography>
-                          )}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {(product.discountedPrice || product.price).toLocaleString()} VNĐ
-                        </Typography>
-                        {product.discountedPrice && (
+                            <Typography
+                              variant="body1"
+                              color="error"
+                              sx={{ fontWeight: "bold" }}
+                            >
+                              {product.discountedPrice.toLocaleString()} VNĐ
+                            </Typography>
+                          </>
+                        ) : (
                           <Typography
-                            variant="body2"
-                            color="text.secondary"
-                            sx={{ textDecoration: "line-through" }}
+                            variant="body1"
+                            sx={{ fontWeight: "bold" }}
                           >
                             {product.originalPrice.toLocaleString()} VNĐ
                           </Typography>
                         )}
                       </CardContent>
                     </Link>
+                    <Box sx={{ p: 2 }}>
+                      <AddToCartButton
+                        fullWidth
+                        variant="contained"
+                        onClick={() => handleAddToCart(product._id)}
+                      >
+                        Thêm vào giỏ hàng
+                      </AddToCartButton>
+                    </Box>
                   </Card>
                 </Grid>
               ))
             ) : (
               <Typography variant="body1" sx={{ my: 2 }}>
-                Không có sản phẩm mới nào để hiển thị.
+                Không có sản phẩm bán chạy nào để hiển thị.
               </Typography>
             )}
           </Grid>
         )}
       </Container>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={3000}
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={handleSnackbarClose}
+          severity={snackbar.severity}
+          sx={{ width: "100%" }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

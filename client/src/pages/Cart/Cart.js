@@ -336,7 +336,7 @@ const Cart = () => {
                   )}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Tồn kho: {item.productId.stock}
+                  Số lượng: {item.productId.stock}
                 </Typography>
                 <Box display="flex" alignItems="center" mt={1}>
                   <IconButton

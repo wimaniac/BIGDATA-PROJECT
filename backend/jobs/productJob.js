@@ -3,9 +3,8 @@ import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 import { scheduleJob } from "node-schedule";
 
-// Thu thập dữ liệu (InputFormat)
-const DataCollector = async () => {
-  // Lấy đơn hàng đã giao
+// **InputFormat: Thu thập dữ liệu từ "DFS" (MongoDB)**
+const InputFormat = async () => {
   const orders = await Order.find({ status: "Đã giao" })
     .populate({
       path: "products.product",
@@ -14,16 +13,15 @@ const DataCollector = async () => {
     })
     .lean();
 
-  console.log("Đơn hàng đã thu thập:", JSON.stringify(orders, null, 2));
   return orders;
 };
 
-// Map Function
+// **Map Function: Ánh xạ dữ liệu thành key-value pairs**
 const mapFunction = (orders) => {
   const keyValuePairs = [];
 
-  // Map cho sản phẩm bán chạy (từ orders)
-  orders.forEach(order => {
+  // TaskTracker M1: Xử lý Orders để tính sản phẩm bán chạy
+  orders.forEach((order) => {
     order.products.forEach(({ product, quantity }) => {
       if (!product) {
         console.warn("Sản phẩm không tồn tại trong đơn hàng:", order._id);
@@ -41,74 +39,95 @@ const mapFunction = (orders) => {
   return keyValuePairs;
 };
 
-// Partition Function
+// **Partition Function: Nhóm dữ liệu theo key**
 const partitionFunction = (keyValuePairs) => {
   const partitionedData = {};
-
   keyValuePairs.forEach(({ key, value }) => {
     if (!partitionedData[key]) {
       partitionedData[key] = [];
     }
     partitionedData[key].push(value);
   });
-
   return partitionedData;
 };
 
-// Map Phase
-const MapPhase = async () => {
-  const orders = await DataCollector();
-  const keyValuePairs = mapFunction(orders);
-  const partitionedData = partitionFunction(keyValuePairs);
-  return partitionedData;
-};
-
-// Sort Function
-const sortFunction = (partitionedData) => {
-  const sortedData = { topSelling: [] };
+// **Combine Function: Tổng hợp dữ liệu trong từng nhóm (trong RAM)**
+const combineFunction = (partitionedData) => {
+  const combinedData = {};
 
   for (const key in partitionedData) {
+    const values = partitionedData[key];
+    const totalQuantity = values.reduce((sum, { quantity }) => sum + quantity, 0);
+    const productName = values[0].productName;
+    const productId = values[0].productId;
+
+    combinedData[key] = {
+      productId,
+      productName,
+      totalQuantity,
+    };
+  }
+
+  return combinedData;
+};
+
+// **Map Phase: Thực hiện InputFormat, map(), partition(), combine()**
+const MapPhase = async () => {
+  // InputFormat: Lấy dữ liệu từ "DFS"
+  const orders = await InputFormat();
+
+  // TaskTracker M1: Ánh xạ dữ liệu
+  const keyValuePairs = mapFunction(orders);
+
+  // Partition: Nhóm dữ liệu
+  const partitionedData = partitionFunction(keyValuePairs);
+
+  // Combine: Tổng hợp dữ liệu trong RAM
+  const combinedData = combineFunction(partitionedData);
+
+  // Lưu kết quả trung gian vào "DFS" (ở đây chỉ mô phỏng, trả về dữ liệu)
+  return combinedData;
+};
+
+// **Sort Function: Sắp xếp dữ liệu trước khi reduce**
+const sortFunction = (combinedData) => {
+  const sortedData = { topSelling: [] };
+
+  for (const key in combinedData) {
     if (key.startsWith("topSelling:")) {
-      sortedData.topSelling.push({ key, values: partitionedData[key] });
+      sortedData.topSelling.push(combinedData[key]);
     }
   }
+
+  // Sắp xếp theo totalQuantity (giảm dần)
+  sortedData.topSelling.sort((a, b) => b.totalQuantity - a.totalQuantity);
 
   return sortedData;
 };
 
-// Reduce Function
+// **Reduce Function: Xử lý dữ liệu đã được tổng hợp**
 const reduceFunction = (sortedData) => {
-  const reducedData = { topSelling: [] };
-
-  // Xử lý sản phẩm bán chạy
-  sortedData.topSelling.forEach(({ key, values }) => {
-    const [_, productId] = key.split(":");
-    const totalQuantity = values.reduce((sum, { quantity }) => sum + quantity, 0);
-    const productName = values[0].productName;
-
-    reducedData.topSelling.push({
-      productId,
-      productName,
-      totalQuantity,
-    });
-  });
-
-  // Sắp xếp sản phẩm bán chạy theo totalQuantity (giảm dần)
-  reducedData.topSelling.sort((a, b) => b.totalQuantity - a.totalQuantity);
-
   // Lấy top 10 sản phẩm bán chạy
-  reducedData.topSelling = reducedData.topSelling.slice(0, 10);
+  const topSelling = sortedData.topSelling.slice(0, 10);
+  return { topSelling };
+};
+
+// **Reduce Phase: Đọc dữ liệu từ "DFS", sort, reduce**
+const ReducePhase = async (intermediateData) => {
+  // Đọc dữ liệu từ "DFS" (ở đây là intermediateData đã được lưu từ Map Phase)
+  const sortedData = sortFunction(intermediateData);
+
+  // TaskTracker R1: Thực hiện reduce
+  const reducedData = reduceFunction(sortedData);
 
   return reducedData;
 };
 
-// OutputFormat: Cập nhật popularityRank vào Product
+// **OutputFormat: Ghi kết quả cuối cùng vào "DFS" (cập nhật MongoDB)**
 const OutputFormat = async ({ topSelling }) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
     // Reset popularityRank cho tất cả sản phẩm
-    await Product.updateMany({}, { $set: { popularityRank: 0 } }, { session });
+    await Product.updateMany({}, { $set: { popularityRank: 0 } });
 
     // Cập nhật popularityRank cho top 10 sản phẩm bán chạy
     const bulkOperations = topSelling.map((product, index) => ({
@@ -119,46 +138,44 @@ const OutputFormat = async ({ topSelling }) => {
     }));
 
     if (bulkOperations.length > 0) {
-      await Product.bulkWrite(bulkOperations, { session });
+      await Product.bulkWrite(bulkOperations);
     }
 
-    await session.commitTransaction();
     console.log("✅ Đã cập nhật sản phẩm bán chạy!");
     return topSelling;
   } catch (error) {
-    await session.abortTransaction();
     console.error("❌ Lỗi trong OutputFormat:", error);
     throw error;
-  } finally {
-    session.endSession();
   }
 };
 
-// Reduce Phase
-const ReducePhase = async (intermediateData) => {
-  const sortedData = sortFunction(intermediateData);
-  const reducedData = reduceFunction(sortedData);
-  const result = await OutputFormat(reducedData);
-  return result;
-};
-
-// Job Tracker
+// **Job Tracker: Điều phối toàn bộ luồng**
 const ProductJob = async () => {
   console.log("🔄 JobTracker sản phẩm bán chạy bắt đầu...");
   try {
+    // Map Phase
     const intermediateData = await MapPhase();
-    const result = await ReducePhase(intermediateData);
+
+    // Reduce Phase
+    const reducedData = await ReducePhase(intermediateData);
+
+    // Output Phase
+    const result = await OutputFormat(reducedData);
+
     console.log("✅ ProductJob sản phẩm bán chạy hoàn tất!");
-    return result; // Trả về kết quả để sử dụng (nếu cần)
+    return result;
   } catch (error) {
     console.error("❌ Lỗi trong JobTracker sản phẩm bán chạy:", error);
     throw error;
+    
   }
+  
 };
 
-// Lên lịch JobTracker
+// **Lên lịch chạy JobTracker**
 const scheduleProductJob = () => {
-  scheduleJob("0 0 * * *", async () => { // Chạy mỗi ngày lúc 00:00
+  scheduleJob("* * * * *", async () => {
+    // Chạy mỗi ngày lúc 00:00
     await ProductJob();
   });
 };

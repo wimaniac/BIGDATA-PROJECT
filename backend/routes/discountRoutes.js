@@ -4,12 +4,6 @@ import Product from "../models/Product.js";
 
 const router = express.Router();
 
-// // Middleware kiểm tra quyền admin (nếu cần)
-// const checkAdmin = async (req, res, next) => {
-//   // Giả sử bạn có logic kiểm tra token và role ở đây
-//   // Ví dụ: chỉ admin mới tạo/cập nhật/xóa discount
-//   next();
-// };
 
 // Tạo giảm giá mới
 router.post("/", async (req, res) => {
@@ -145,7 +139,11 @@ router.get("/apply/:productId", async (req, res) => {
     });
 
     if (discounts.length === 0) {
-      return res.json({ originalPrice: product.price, discountedPrice: product.price });
+      return res.json({
+        originalPrice: product.price,
+        discountedPrice: product.price,
+        isDiscounted: false, // Thêm trường này
+      });
     }
 
     // Chọn giảm giá tốt nhất (ưu tiên giảm giá cao nhất)
@@ -168,6 +166,7 @@ router.get("/apply/:productId", async (req, res) => {
     res.json({
       originalPrice: product.price,
       discountedPrice: Math.max(0, bestDiscountedPrice), // Đảm bảo giá không âm
+      isDiscounted: true, // Có giảm giá
     });
   } catch (error) {
     console.error("Lỗi khi áp dụng giảm giá:", error);

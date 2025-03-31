@@ -12,7 +12,6 @@ const OrderCollector = async () => {
       populate: { path: "parentCategory subCategory", select: "name" },
     })
     .lean();
-  console.log("Đơn hàng đã thu thập:", JSON.stringify(orders, null, 2));
   return orders;
 };
 
@@ -195,7 +194,7 @@ const RevenueJob = async () => {
 
 // Lên lịch JobTracker
 const scheduleRevenueJob = () => {
-  scheduleJob("0 0 * * *", async () => {
+  scheduleJob("* * * * *", async () => {
     await RevenueJob();
   });
 };
