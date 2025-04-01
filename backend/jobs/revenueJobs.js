@@ -171,7 +171,7 @@ const OutputFormat = async ({ category, time }) => {
   }
 };
 
-// Reduce Phase (Task Tracker R1, R2)
+// Reduce Phase 
 const ReducePhase = async (intermediateData) => {
   const sortedData = sortFunction(intermediateData);
   const reducedData = reduceFunction(sortedData);

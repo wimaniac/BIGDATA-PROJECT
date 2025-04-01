@@ -1,11 +1,14 @@
 import express from "express";
+import jwt from "jsonwebtoken"; // Thêm import jwt
 import Product from "../models/Product.js";
 import Review from "../models/Review.js";
+import User from "../models/User.js"; // Thêm import User
 import cloudinary from "cloudinary";
 import multer from "multer";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import dotenv from "dotenv";
 import axios from "axios";
+
 const router = express.Router();
 dotenv.config();
 
@@ -20,16 +23,16 @@ cloudinary.v2.config({
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary.v2,
   params: {
-    folder: "products", // Lưu vào thư mục "products" trên Cloudinary
-    format: async (req, file) => "png", // Định dạng ảnh mặc định
-    public_id: (req, file) => Date.now() + "-" + file.originalname, // Định danh ảnh
+    folder: "products",
+    format: async (req, file) => "png",
+    public_id: (req, file) => Date.now() + "-" + file.originalname,
   },
 });
 
 const upload = multer({ storage });
 
-// Middleware kiểm tra quyền admin hoặc manager
-const authAdminOrManager = async (req, res, next) => {
+// Middleware kiểm tra token
+const authMiddleware = async (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) {
     return res.status(401).json({ message: "Không có token được cung cấp!" });
@@ -41,11 +44,6 @@ const authAdminOrManager = async (req, res, next) => {
     if (!user) {
       return res.status(404).json({ message: "Không tìm thấy người dùng!" });
     }
-
-    if (user.role !== "admin" && user.role !== "manager") {
-      return res.status(403).json({ message: "Bạn không có quyền thực hiện hành động này!" });
-    }
-
     req.user = user;
     next();
   } catch (error) {
@@ -53,14 +51,24 @@ const authAdminOrManager = async (req, res, next) => {
   }
 };
 
+// Middleware kiểm tra quyền admin hoặc manager
+const authAdminOrManager = async (req, res, next) => {
+  if (!req.user || (req.user.role !== "admin" && req.user.role !== "manager")) {
+    return res.status(403).json({ message: "Bạn không có quyền thực hiện hành động này!" });
+  }
+  next();
+};
+
+// Tính trung bình đánh giá
 const calculateAverageRating = async (productId) => {
   const reviews = await Review.find({ productId });
   if (reviews.length === 0) return 0;
   const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
   return totalRating / reviews.length;
 };
+
 // Get all products
-router.get("/", async (req, res) => {
+router.get("/", authMiddleware, async (req, res) => {
   try {
     let query = Product.find()
       .populate("parentCategory", "name")
@@ -69,28 +77,34 @@ router.get("/", async (req, res) => {
 
     const products = await query.exec();
 
-    const token = req.headers.authorization; 
-    if (!token) {
-      return res.status(401).json({ message: "Không có token được cung cấp!" });
-    }
-
     const productsWithDiscountAndRating = await Promise.all(
       products.map(async (product) => {
-        // Gửi yêu cầu với header Authorization
-        const discountResponse = await axios.get(
-          `http://localhost:5000/api/discounts/apply/${product._id}`,
-          {
-            headers: { Authorization: token }, // Thêm token vào header
-          }
-        );
-        const averageRating = await calculateAverageRating(product._id);
-        return {
-          ...product.toObject(),
-          originalPrice: discountResponse.data.originalPrice,
-          discountedPrice: discountResponse.data.discountedPrice,
-          isDiscounted: discountResponse.data.isDiscounted,
-          ratings: averageRating,
-        };
+        try {
+          const discountResponse = await axios.get(
+            `http://localhost:5000/api/discounts/apply/${product._id}`,
+            {
+              headers: { Authorization: req.headers.authorization },
+            }
+          );
+          const averageRating = await calculateAverageRating(product._id);
+          return {
+            ...product.toObject(),
+            originalPrice: discountResponse.data.originalPrice,
+            discountedPrice: discountResponse.data.discountedPrice,
+            isDiscounted: discountResponse.data.isDiscounted,
+            ratings: averageRating,
+          };
+        } catch (discountError) {
+          console.error(`Lỗi khi lấy giảm giá cho sản phẩm ${product._id}:`, discountError);
+          const averageRating = await calculateAverageRating(product._id);
+          return {
+            ...product.toObject(),
+            originalPrice: product.price,
+            discountedPrice: product.price,
+            isDiscounted: false,
+            ratings: averageRating,
+          };
+        }
       })
     );
 
@@ -101,13 +115,10 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.get("/best-selling", async (req, res) => {
+// Get best-selling products
+router.get("/best-selling", authMiddleware, async (req, res) => {
   try {
     const { limit = 8 } = req.query;
-    const token = req.headers.authorization; // Lấy token từ header
-    if (!token) {
-      return res.status(401).json({ message: "Không có token được cung cấp!" });
-    }
 
     const products = await Product.find({ popularityRank: { $gt: 0 } })
       .populate("parentCategory", "name")
@@ -118,20 +129,32 @@ router.get("/best-selling", async (req, res) => {
 
     const productsWithDiscountAndRating = await Promise.all(
       products.map(async (product) => {
-        const discountResponse = await axios.get(
-          `http://localhost:5000/api/discounts/apply/${product._id}`,
-          {
-            headers: { Authorization: token }, // Truyền token vào yêu cầu
-          }
-        );
-        const averageRating = await calculateAverageRating(product._id);
-        return {
-          ...product.toObject(),
-          originalPrice: discountResponse.data.originalPrice,
-          discountedPrice: discountResponse.data.discountedPrice,
-          isDiscounted: discountResponse.data.isDiscounted,
-          ratings: averageRating,
-        };
+        try {
+          const discountResponse = await axios.get(
+            `http://localhost:5000/api/discounts/apply/${product._id}`,
+            {
+              headers: { Authorization: req.headers.authorization },
+            }
+          );
+          const averageRating = await calculateAverageRating(product._id);
+          return {
+            ...product.toObject(),
+            originalPrice: discountResponse.data.originalPrice,
+            discountedPrice: discountResponse.data.discountedPrice,
+            isDiscounted: discountResponse.data.isDiscounted,
+            ratings: averageRating,
+          };
+        } catch (discountError) {
+          console.error(`Lỗi khi lấy giảm giá cho sản phẩm ${product._id}:`, discountError);
+          const averageRating = await calculateAverageRating(product._id);
+          return {
+            ...product.toObject(),
+            originalPrice: product.price,
+            discountedPrice: product.price,
+            isDiscounted: false,
+            ratings: averageRating,
+          };
+        }
       })
     );
 
@@ -142,13 +165,10 @@ router.get("/best-selling", async (req, res) => {
   }
 });
 
-router.get("/newest", async (req, res) => {
+// Get newest products
+router.get("/newest", authMiddleware, async (req, res) => {
   try {
     const { limit = 8 } = req.query;
-    const token = req.headers.authorization; // Lấy token từ header
-    if (!token) {
-      return res.status(401).json({ message: "Không có token được cung cấp!" });
-    }
 
     const products = await Product.find()
       .populate("parentCategory", "name")
@@ -159,20 +179,32 @@ router.get("/newest", async (req, res) => {
 
     const productsWithDiscountAndRating = await Promise.all(
       products.map(async (product) => {
-        const discountResponse = await axios.get(
-          `http://localhost:5000/api/discounts/apply/${product._id}`,
-          {
-            headers: { Authorization: token }, // Truyền token vào yêu cầu
-          }
-        );
-        const averageRating = await calculateAverageRating(product._id);
-        return {
-          ...product.toObject(),
-          originalPrice: discountResponse.data.originalPrice,
-          discountedPrice: discountResponse.data.discountedPrice,
-          isDiscounted: discountResponse.data.isDiscounted,
-          ratings: averageRating,
-        };
+        try {
+          const discountResponse = await axios.get(
+            `http://localhost:5000/api/discounts/apply/${product._id}`,
+            {
+              headers: { Authorization: req.headers.authorization },
+            }
+          );
+          const averageRating = await calculateAverageRating(product._id);
+          return {
+            ...product.toObject(),
+            originalPrice: discountResponse.data.originalPrice,
+            discountedPrice: discountResponse.data.discountedPrice,
+            isDiscounted: discountResponse.data.isDiscounted,
+            ratings: averageRating,
+          };
+        } catch (discountError) {
+          console.error(`Lỗi khi lấy giảm giá cho sản phẩm ${product._id}:`, discountError);
+          const averageRating = await calculateAverageRating(product._id);
+          return {
+            ...product.toObject(),
+            originalPrice: product.price,
+            discountedPrice: product.price,
+            isDiscounted: false,
+            ratings: averageRating,
+          };
+        }
       })
     );
 
@@ -182,13 +214,15 @@ router.get("/newest", async (req, res) => {
     res.status(500).json({ message: "Lỗi server khi lấy sản phẩm mới!", error: error.message });
   }
 });
+
 // Get product by ID with details
-router.get("/:id", async (req, res) => {
+router.get("/:id", authMiddleware, async (req, res) => {
   try {
     const product = await Product.findById(req.params.id)
       .populate("parentCategory", "name")
       .populate("subCategory", "name")
       .populate("supplier", "name");
+
     if (!product) return res.status(404).json({ message: "Product not found" });
 
     // Lấy token từ header của yêu cầu gốc
@@ -197,23 +231,34 @@ router.get("/:id", async (req, res) => {
       return res.status(401).json({ message: "Không có token được cung cấp!" });
     }
 
-    // Gọi API áp dụng giảm giá với token
-    const discountResponse = await axios.get(
-      `http://localhost:5000/api/discounts/apply/${req.params.id}`,
-      {
-        headers: { Authorization: token },
-      }
-    );
-    const { originalPrice, discountedPrice, isDiscounted } = discountResponse.data;
+    // Gọi API áp dụng giảm giá với xử lý lỗi
+    let discountResponse;
+    try {
+      discountResponse = await axios.get(
+        `http://localhost:5000/api/discounts/apply/${req.params.id}`,
+        {
+          headers: { Authorization: token },
+        }
+      );
+    } catch (discountError) {
+      console.error(`Lỗi khi lấy giảm giá cho sản phẩm ${req.params.id}:`, discountError);
+      discountResponse = {
+        data: {
+          originalPrice: product.price,
+          discountedPrice: product.price,
+          isDiscounted: false,
+        },
+      };
+    }
 
     // Tính rating trung bình
     const averageRating = await calculateAverageRating(req.params.id);
 
     res.json({
       ...product.toObject(),
-      originalPrice,
-      discountedPrice,
-      isDiscounted,
+      originalPrice: discountResponse.data.originalPrice,
+      discountedPrice: discountResponse.data.discountedPrice,
+      isDiscounted: discountResponse.data.isDiscounted,
       ratings: averageRating,
     });
   } catch (err) {
@@ -222,9 +267,12 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+
 // Create a new product with file uploads
 router.post(
   "/",
+  authMiddleware,
+  authAdminOrManager,
   upload.fields([
     { name: "mainImage", maxCount: 1 },
     { name: "additionalImages", maxCount: 5 },
@@ -238,36 +286,30 @@ router.post(
         return res.status(400).json({ message: "Ảnh chính là bắt buộc!" });
       }
 
-      // URL ảnh chính từ Cloudinary
       const mainImageUrl = req.files.mainImage[0].path;
-
-      // URL ảnh phụ từ Cloudinary
       let additionalImageUrls = [];
       if (req.files.additionalImages) {
-        additionalImageUrls = req.files.additionalImages.map(
-          (file) => file.path
-        );
+        additionalImageUrls = req.files.additionalImages.map((file) => file.path);
       }
 
-      // Tạo sản phẩm mới
       const product = new Product({
         name: req.body.name,
         price: parseFloat(req.body.price),
         parentCategory: req.body.parentCategory,
         subCategory: req.body.subCategory || null,
-        supplier: req.body.supplier, // Ensure supplier is included
+        supplier: req.body.supplier,
         stock: parseInt(req.body.stock) || 0,
         details: req.body.details || "",
         isFeature: req.body.isFeature === "true",
         mainImage: mainImageUrl,
-        additionalImages: additionalImageUrls, // Lưu ảnh phụ vào DB
+        additionalImages: additionalImageUrls,
       });
 
       const newProduct = await product.save();
       res.status(201).json(newProduct);
-    } catch (err) {
-      console.error("❌ Lỗi khi tạo sản phẩm:", err);
-      res.status(500).json({ message: "Lỗi Server!", error: err.message });
+    } catch (error) {
+      console.error("❌ Lỗi khi tạo sản phẩm:", error);
+      res.status(500).json({ message: "Lỗi Server!", error: error.message });
     }
   }
 );
@@ -275,6 +317,7 @@ router.post(
 // Update product
 router.put(
   "/:id",
+  authMiddleware,
   authAdminOrManager,
   upload.fields([
     { name: "mainImage", maxCount: 1 },
@@ -317,21 +360,22 @@ router.put(
 
       const updatedProduct = await product.save();
       res.json(updatedProduct);
-    } catch (err) {
-      console.error("❌ Lỗi khi cập nhật sản phẩm:", err);
-      res.status(400).json({ message: err.message });
+    } catch (error) {
+      console.error("❌ Lỗi khi cập nhật sản phẩm:", error);
+      res.status(400).json({ message: error.message });
     }
   }
 );
 
 // Delete product
-router.delete("/:id", authAdminOrManager, async (req, res) => {
+router.delete("/:id", authMiddleware, authAdminOrManager, async (req, res) => {
   try {
     const deletedProduct = await Product.findByIdAndDelete(req.params.id);
     if (!deletedProduct) return res.status(404).json({ message: "Product not found" });
     res.json({ message: "Product deleted" });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+  } catch (error) {
+    console.error("❌ Lỗi khi xóa sản phẩm:", error);
+    res.status(500).json({ message: error.message });
   }
 });
 

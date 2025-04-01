@@ -44,10 +44,11 @@ const authAdminOrManager = async (req, res, next) => {
   }
 };
 
-// Get all inventory items (yêu cầu đăng nhập)
 router.get("/", authMiddleware, async (req, res) => {
   try {
-    const inventoryItems = await Inventory.find();
+    const inventoryItems = await Inventory.find()
+      .populate("product", "name")
+      .populate("warehouse", "name");
     res.json(inventoryItems);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -57,7 +58,9 @@ router.get("/", authMiddleware, async (req, res) => {
 // Get inventory item by ID (yêu cầu đăng nhập)
 router.get("/:id", authMiddleware, async (req, res) => {
   try {
-    const inventoryItem = await Inventory.findById(req.params.id);
+    const inventoryItem = await Inventory.findById(req.params.id)
+      .populate("product", "name")
+      .populate("warehouse", "name");
     if (!inventoryItem)
       return res.status(404).json({ message: "Inventory item not found" });
     res.json(inventoryItem);
@@ -71,7 +74,9 @@ router.get("/category/:categoryId", authMiddleware, async (req, res) => {
   try {
     const inventoryItems = await Inventory.find({
       category: req.params.categoryId,
-    });
+    })
+      .populate("product", "name")
+      .populate("warehouse", "name");
     res.json(inventoryItems);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -98,7 +103,14 @@ router.post("/", authAdminOrManager, async (req, res) => {
 
     const existingInventory = await Inventory.findOne({ product, warehouse });
     if (existingInventory) {
-      return res.status(400).json({ message: "Tồn kho cho sản phẩm này tại kho đã tồn tại! Vui lòng chỉnh sửa thay vì tạo mới." });
+      return res.status(400).json({
+        message: "Tồn kho cho sản phẩm này tại kho đã tồn tại! Vui lòng chỉnh sửa thay vì tạo mới.",
+        existingInventory: {
+          id: existingInventory._id,
+          quantity: existingInventory.quantity,
+          warehouse: existingInventory.warehouse,
+        },
+      });
     }
 
     const inventory = new Inventory({
@@ -120,8 +132,6 @@ router.post("/", authAdminOrManager, async (req, res) => {
 
 // Chỉnh sửa tồn kho (chỉ manager hoặc admin)
 router.put("/:id", authAdminOrManager, async (req, res) => {
-  const { quantity, product } = req.body;
-
   try {
     const inventoryItem = await Inventory.findById(req.params.id);
     if (!inventoryItem) {
@@ -132,7 +142,9 @@ router.put("/:id", authAdminOrManager, async (req, res) => {
       req.params.id,
       req.body,
       { new: true }
-    );
+    )
+      .populate("product", "name")
+      .populate("warehouse", "name");
     res.json(updatedInventoryItem);
   } catch (err) {
     console.error("Lỗi trong PUT /api/inventory/:id:", err);
@@ -144,8 +156,10 @@ router.put("/:id", authAdminOrManager, async (req, res) => {
 router.delete("/:id", authAdminOrManager, async (req, res) => {
   try {
     const deletedInventoryItem = await Inventory.findByIdAndDelete(req.params.id);
-    if (!deletedInventoryItem)
+    if (!deletedInventoryItem) {
       return res.status(404).json({ message: "Không tìm thấy mục hàng tồn kho" });
+    }
+    console.log(`Đã xóa Inventory: ${deletedInventoryItem._id}, product: ${deletedInventoryItem.product}, warehouse: ${deletedInventoryItem.warehouse}`);
     res.json({ message: "Đã xóa mục hàng tồn kho" });
   } catch (err) {
     console.error("Lỗi trong DELETE /api/inventory/:id:", err);

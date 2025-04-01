@@ -41,6 +41,8 @@ const orderSchema = new mongoose.Schema(
       enum: ["Đang xử lí", "Đang giao", "Đã giao", "Đã hủy"],
       index: true,
     },
+    processed: { type: Boolean, default: false },
+    error: { type: String },
   },
   { timestamps: true }
 );

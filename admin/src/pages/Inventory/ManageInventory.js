@@ -43,6 +43,7 @@ const ManageInventory = () => {
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState("");
   const token = localStorage.getItem("token");
+  const userRole = JSON.parse(localStorage.getItem("user"))?.role;
 
   useEffect(() => {
     fetchInventoryItems();
@@ -60,7 +61,13 @@ const ManageInventory = () => {
       const response = await axios.get("http://localhost:5000/api/warehouses", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setWarehouses(response.data);
+      console.log("Danh sách kho:", response.data);
+      // Chuẩn hóa tên kho (loại bỏ khoảng trắng thừa)
+      const normalizedWarehouses = response.data.map((warehouse) => ({
+        ...warehouse,
+        name: warehouse.name.trim(),
+      }));
+      setWarehouses(normalizedWarehouses);
     } catch (error) {
       console.error("Lỗi khi lấy danh sách kho:", error);
     }
@@ -71,6 +78,7 @@ const ManageInventory = () => {
       const response = await axios.get("http://localhost:5000/api/inventory", {
         headers: { Authorization: `Bearer ${token}` },
       });
+      console.log("Danh sách tồn kho:", response.data);
       setInventoryItems(response.data);
     } catch (error) {
       console.error("Lỗi khi lấy danh sách kho hàng:", error);
@@ -82,6 +90,7 @@ const ManageInventory = () => {
       const response = await axios.get("http://localhost:5000/api/products", {
         headers: { Authorization: `Bearer ${token}` },
       });
+      console.log("Danh sách sản phẩm:", response.data);
       setProducts(response.data);
     } catch (error) {
       console.error("Lỗi khi lấy danh sách sản phẩm:", error);
@@ -93,6 +102,7 @@ const ManageInventory = () => {
       const response = await axios.get("http://localhost:5000/api/categories/parents", {
         headers: { Authorization: `Bearer ${token}` },
       });
+      console.log("Danh sách danh mục cha:", response.data);
       setParentCategories(response.data);
     } catch (error) {
       console.error("Lỗi khi lấy danh mục cha:", error);
@@ -105,6 +115,7 @@ const ManageInventory = () => {
         `http://localhost:5000/api/categories/subcategories/${parentId}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      console.log("Danh sách danh mục con:", response.data);
       setSubCategories(response.data);
     } catch (error) {
       console.error("Lỗi khi lấy danh mục con:", error);
@@ -113,18 +124,21 @@ const ManageInventory = () => {
   };
 
   const handleOpen = (item = { product: "", quantity: 1, price: 0, parentCategory: "", subCategory: "", warehouse: "" }) => {
+    if (userRole === "sales") return; // Ngăn sales mở dialog
     setCurrentItem(item);
     setEditMode(!!item._id);
     if (item.product) {
-      const selectedProduct = products.find((p) => p._id === item.product.toString());
+      const selectedProduct = products.find((p) => p._id === (item.product?._id || item.product.toString()));
       if (selectedProduct) {
         setCurrentItem((prev) => ({
           ...prev,
-          parentCategory: selectedProduct.parentCategory._id || "",
+          product: selectedProduct._id,
+          parentCategory: selectedProduct.parentCategory?._id || "",
           subCategory: selectedProduct.subCategory?._id || "",
-          warehouse: item.warehouse || "",
+          warehouse: item.warehouse?._id || item.warehouse || "",
+          price: item.price || selectedProduct.discountedPrice || selectedProduct.price,
         }));
-        fetchSubCategories(selectedProduct.parentCategory._id);
+        fetchSubCategories(selectedProduct.parentCategory?._id || "");
       }
     }
     setOpen(true);
@@ -154,10 +168,10 @@ const ManageInventory = () => {
         setCurrentItem((prev) => ({
           ...prev,
           price: selectedProduct.discountedPrice || selectedProduct.price,
-          parentCategory: selectedProduct.parentCategory._id || "",
+          parentCategory: selectedProduct.parentCategory?._id || "",
           subCategory: selectedProduct.subCategory?._id || "",
         }));
-        fetchSubCategories(selectedProduct.parentCategory._id);
+        fetchSubCategories(selectedProduct.parentCategory?._id || "");
       }
     }
   };
@@ -179,23 +193,37 @@ const ManageInventory = () => {
         category: currentItem.parentCategory,
         warehouse: currentItem.warehouse,
       };
-      console.log("Dữ liệu gửi lên:", data);
       if (!token) throw new Error("Không tìm thấy token!");
+      let response;
       if (editMode) {
-        await axios.put(`http://localhost:5000/api/inventory/${currentItem._id}`, data, {
+        response = await axios.put(`http://localhost:5000/api/inventory/${currentItem._id}`, data, {
           headers: { Authorization: `Bearer ${token}` },
         });
       } else {
-        await axios.post("http://localhost:5000/api/inventory", data, {
+        response = await axios.post("http://localhost:5000/api/inventory", data, {
           headers: { Authorization: `Bearer ${token}` },
         });
       }
-      fetchInventoryItems();
+      await fetchInventoryItems(); // Đảm bảo làm mới dữ liệu
+      console.log("Dữ liệu sau khi lưu:", response.data);
       handleClose();
     } catch (error) {
       console.error("Lỗi khi lưu kho hàng:", error);
-      console.log("Chi tiết lỗi:", error.response);
-      alert(error.response?.data?.message ? `Lỗi: ${error.response.data.message}` : "Có lỗi xảy ra khi lưu kho hàng!");
+      if (error.response?.status === 400 && error.response.data.existingInventory) {
+        const existing = error.response.data.existingInventory;
+        alert(`Tồn kho đã tồn tại! Mở chế độ chỉnh sửa cho bản ghi: ID ${existing.id}, Số lượng: ${existing.quantity}`);
+        setCurrentItem({
+          ...currentItem,
+          _id: existing.id,
+          quantity: existing.quantity,
+        });
+        setEditMode(true);
+      } else {
+        alert(error.response?.data?.message ? `Lỗi: ${error.response.data.message}` : "Có lỗi xảy ra khi lưu kho hàng!");
+        if (error.response?.status === 403) {
+          alert("Bạn không có quyền thực hiện hành động này!");
+        }
+      }
     }
   };
 
@@ -205,10 +233,22 @@ const ManageInventory = () => {
         await axios.delete(`http://localhost:5000/api/inventory/${id}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        fetchInventoryItems();
+        await fetchInventoryItems();
+        const response = await axios.get("http://localhost:5000/api/inventory", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const remainingItems = response.data.filter(
+          (item) => (item.product?._id || item.product) === currentItem.product && (item.warehouse?._id || item.warehouse) === currentItem.warehouse
+        );
+        if (remainingItems.length > 0) {
+          console.error("Bản ghi Inventory vẫn còn tồn tại sau khi xóa:", remainingItems);
+        }
       } catch (error) {
         console.error("Lỗi khi xóa kho hàng:", error);
-        alert("Có lỗi xảy ra khi xóa kho hàng!");
+        alert(error.response?.data?.message || "Có lỗi xảy ra khi xóa kho hàng!");
+        if (error.response?.status === 403) {
+          alert("Bạn không có quyền thực hiện hành động này!");
+        }
       }
     }
   };
@@ -224,10 +264,9 @@ const ManageInventory = () => {
 
   const handleSearchChange = (e) => {
     setSearchTerm(e.target.value);
-    setPage(0); // Reset về trang đầu khi tìm kiếm
+    setPage(0);
   };
 
-  // Hàm chuyển đổi chuỗi có dấu sang không dấu
   const removeAccents = (str) => {
     return str
       .normalize("NFD")
@@ -235,14 +274,18 @@ const ManageInventory = () => {
       .toLowerCase();
   };
 
-  // Gộp dữ liệu theo sản phẩm
   const groupedInventory = products
     .map((product) => {
-      const items = inventoryItems.filter((item) => item.product.toString() === product._id);
+      const items = inventoryItems.filter(
+        (item) => (item.product?._id || item.product?.toString()) === product._id
+      );
       if (items.length === 0) return null;
       const warehouseQuantities = items.reduce((acc, item) => {
-        const warehouse = warehouses.find((w) => w._id === item.warehouse?.toString());
-        acc[warehouse?.name || "Không xác định"] = {
+        const warehouse = warehouses.find(
+          (w) => (item.warehouse?._id || item.warehouse?.toString()) === w._id
+        );
+        const warehouseName = (warehouse?.name || "Không xác định").trim(); // Chuẩn hóa tên kho
+        acc[warehouseName] = {
           quantity: item.quantity,
           id: item._id,
         };
@@ -255,22 +298,24 @@ const ManageInventory = () => {
     })
     .filter((item) => item !== null);
 
-  // Lọc theo tìm kiếm
+  console.log("Grouped Inventory:", groupedInventory);
+
   const filteredInventory = groupedInventory.filter((item) => {
     const search = removeAccents(searchTerm.trim());
     return search === "" || removeAccents(item.productName).includes(search);
   });
 
-  
   return (
     <Container sx={{ mt: 4, mb: 6 }}>
       <Typography variant="h4" sx={{ fontWeight: "bold", mb: 3 }}>
         Quản lý kho hàng
       </Typography>
       <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
-        <Button variant="contained" color="primary" onClick={() => handleOpen()}>
-          Thêm sản phẩm vào kho
-        </Button>
+        {userRole !== "sales" && (
+          <Button variant="contained" color="primary" onClick={() => handleOpen()}>
+            Thêm sản phẩm vào kho
+          </Button>
+        )}
         <TextField
           label="Tìm kiếm sản phẩm"
           variant="outlined"
@@ -286,7 +331,9 @@ const ManageInventory = () => {
             <TableRow>
               <TableCell>Sản phẩm</TableCell>
               {warehouses.map((warehouse) => (
-                <TableCell key={warehouse._id} align="center">{warehouse.name}</TableCell>
+                <TableCell key={warehouse._id} align="center">
+                  {warehouse.name}
+                </TableCell>
               ))}
               <TableCell align="center">Hành động</TableCell>
             </TableRow>
@@ -299,20 +346,24 @@ const ManageInventory = () => {
                   <TableCell>{item.productName}</TableCell>
                   {warehouses.map((warehouse) => (
                     <TableCell key={warehouse._id} align="center">
-                      {item.warehouseQuantities[warehouse.name]?.quantity || "-"}
+                      {item.warehouseQuantities[warehouse.name.trim()]?.quantity || "-"}
                     </TableCell>
                   ))}
                   <TableCell align="center">
-                    {Object.values(item.warehouseQuantities).map((data) => (
-                      <Box key={data.id} sx={{ display: "inline-block", mx: 0.5 }}>
-                        <IconButton size="small" onClick={() => handleOpen(inventoryItems.find(i => i._id === data.id))}>
-                          <Edit fontSize="small" />
-                        </IconButton>
-                        <IconButton size="small" onClick={() => handleDelete(data.id)}>
-                          <Delete fontSize="small" />
-                        </IconButton>
-                      </Box>
-                    ))}
+                    {userRole !== "sales" &&
+                      Object.values(item.warehouseQuantities).map((data) => (
+                        <Box key={data.id} sx={{ display: "inline-block", mx: 0.5 }}>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpen(inventoryItems.find((i) => i._id === data.id))}
+                          >
+                            <Edit fontSize="small" />
+                          </IconButton>
+                          <IconButton size="small" onClick={() => handleDelete(data.id)}>
+                            <Delete fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      ))}
                   </TableCell>
                 </TableRow>
               ))}
@@ -378,7 +429,7 @@ const ManageInventory = () => {
             {products
               .filter(
                 (p) =>
-                  (!currentItem.parentCategory || p.parentCategory._id === currentItem.parentCategory) &&
+                  (!currentItem.parentCategory || p.parentCategory?._id === currentItem.parentCategory) &&
                   (!currentItem.subCategory || p.subCategory?._id === currentItem.subCategory)
               )
               .map((product) => (
