@@ -163,7 +163,13 @@ const Header = () => {
 
   const fetchCategories = async () => {
     try {
-      const response = await axios.get("http://localhost:5000/api/categories/parents");
+      const token = localStorage.getItem("token");
+      const response = await axios.get(
+        "http://localhost:5000/api/categories/parents",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
       setParentCategories(response.data);
     } catch (error) {
       console.error("Error fetching parent categories:", error);
@@ -172,11 +178,15 @@ const Header = () => {
 
   const fetchCartCount = async () => {
     const userId = localStorage.getItem("userId");
+    const token = localStorage.getItem("token");
     if (userId && token) {
       try {
-        const response = await axios.get(`http://localhost:5000/api/cart/${userId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await axios.get(
+          `http://localhost:5000/api/cart/${userId}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
         const cartItems = response.data?.items || [];
         const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
         setCartCount(totalItems);
@@ -212,8 +222,12 @@ const Header = () => {
 
   const fetchChildCategories = async (parentId) => {
     try {
+      const token = localStorage.getItem("token");
       const response = await axios.get(
-        `http://localhost:5000/api/categories/subcategories/${parentId}`
+        `http://localhost:5000/api/categories/subcategories/${parentId}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
       );
       setChildCategories((prev) => ({ ...prev, [parentId]: response.data }));
     } catch (error) {

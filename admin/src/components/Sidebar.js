@@ -37,18 +37,11 @@ const Sidebar = () => {
 
   useEffect(() => {
     const fetchUserData = async () => {
-      // Lấy token từ query string
+      // Retrieve token from query string or localStorage
       const params = new URLSearchParams(location.search);
-      const token = params.get("token");
+      const tokenFromQuery = params.get("token");
+      const token = tokenFromQuery || localStorage.getItem("token");
 
-      // Kiểm tra localStorage trước
-      const storedUser = localStorage.getItem("user");
-      if (storedUser) {
-        setUser(JSON.parse(storedUser));
-        return;
-      }
-
-      // Nếu không có trong localStorage, dùng token từ query string để lấy thông tin
       if (token) {
         try {
           const response = await axios.get("http://localhost:5000/api/users/me", {
@@ -56,18 +49,19 @@ const Sidebar = () => {
           });
           const userData = response.data;
           setUser(userData);
-          // Lưu vào localStorage trên port 3001
+
+          // Save token and user data to localStorage
           localStorage.setItem("token", token);
           localStorage.setItem("user", JSON.stringify(userData));
           localStorage.setItem("userId", userData._id);
-          console.log("User data saved to localStorage on port 3001:", userData);
         } catch (error) {
           console.error("Lỗi khi lấy thông tin người dùng:", error);
-          // Nếu token không hợp lệ, chuyển về login
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          localStorage.removeItem("userId");
           window.location.href = "http://localhost:3000/login";
         }
       } else {
-        // Không có token, chuyển về login
         window.location.href = "http://localhost:3000/login";
       }
     };

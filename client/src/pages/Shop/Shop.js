@@ -19,6 +19,9 @@ import {
   Link as MuiLink,
   CircularProgress,
   Collapse,
+  Rating,
+  Snackbar,
+  Alert,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import axios from "axios";
@@ -29,6 +32,7 @@ import {
   GridView as GridViewIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
+  ShoppingCart as ShoppingCartIcon,
 } from "@mui/icons-material";
 
 const FilterBox = styled(Box)(({ theme }) => ({
@@ -47,8 +51,20 @@ const ProductCard = styled(Card)(({ theme }) => ({
   },
 }));
 
+const AddToCartButton = styled(Button)(({ theme }) => ({
+  marginTop: theme.spacing(1),
+  borderRadius: 20,
+  textTransform: "none",
+  fontWeight: "bold",
+  backgroundColor: "#1976d2",
+  color: "#fff",
+  "&:hover": {
+    backgroundColor: "#1565c0",
+  },
+}));
+
 const Shop = () => {
-  const { categoryId } = useParams(); // categoryId giờ có thể là "best-selling" hoặc "newest"
+  const { categoryId } = useParams();
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
@@ -65,6 +81,11 @@ const Shop = () => {
   const [selectedSuppliers, setSelectedSuppliers] = useState([]);
   const [page, setPage] = useState(1);
   const [showSuppliers, setShowSuppliers] = useState(true);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: "",
+    severity: "success",
+  });
   const productsPerPage = 12;
 
   useEffect(() => {
@@ -74,17 +95,35 @@ const Shop = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        navigate("/login");
+        return;
+      }
+
       let productResponse;
       if (categoryId === "best-selling") {
-        productResponse = await axios.get("http://localhost:5000/api/products/best-selling");
+        productResponse = await axios.get(
+          "http://localhost:5000/api/products/best-selling",
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
         setCategoryName("Sản phẩm bán chạy");
         setSortOption("bestSelling");
       } else if (categoryId === "newest") {
-        productResponse = await axios.get("http://localhost:5000/api/products/newest");
+        productResponse = await axios.get(
+          "http://localhost:5000/api/products/newest",
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
         setCategoryName("Sản phẩm mới");
         setSortOption("newest");
       } else {
-        productResponse = await axios.get("http://localhost:5000/api/products");
+        productResponse = await axios.get("http://localhost:5000/api/products", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         let fetchedProducts = productResponse.data;
 
         if (categoryId) {
@@ -94,7 +133,10 @@ const Shop = () => {
               product.subCategory?._id === categoryId
           );
           const categoryResponse = await axios.get(
-            `http://localhost:5000/api/categories/${categoryId}`
+            `http://localhost:5000/api/categories/${categoryId}`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            }
           );
           setCategoryName(categoryResponse.data.name);
         } else {
@@ -108,17 +150,31 @@ const Shop = () => {
 
       if (categoryId && categoryId !== "best-selling" && categoryId !== "newest") {
         const subCategoryResponse = await axios.get(
-          `http://localhost:5000/api/categories/subcategories/${categoryId}`
+          `http://localhost:5000/api/categories/subcategories/${categoryId}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
         );
         setSubCategories(subCategoryResponse.data);
       } else {
         setSubCategories([]);
       }
 
-      const supplierResponse = await axios.get("http://localhost:5000/api/suppliers");
+      const supplierResponse = await axios.get(
+        "http://localhost:5000/api/suppliers",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
       setSuppliers(supplierResponse.data);
     } catch (error) {
       console.error("Lỗi lấy dữ liệu:", error);
+      setSnackbar({
+        open: true,
+        message: "Vui lòng đăng nhập để xem sản phẩm!",
+        severity: "warning",
+      });
+      setTimeout(() => navigate("/login"), 1500);
     } finally {
       setLoading(false);
     }
@@ -140,7 +196,9 @@ const Shop = () => {
     }
 
     result = result.filter(
-      (product) => product.price >= priceRange[0] && product.price <= priceRange[1]
+      (product) =>
+        (product.discountedPrice || product.originalPrice) >= priceRange[0] &&
+        (product.discountedPrice || product.originalPrice) <= priceRange[1]
     );
 
     if (inStock) {
@@ -148,7 +206,7 @@ const Shop = () => {
     }
 
     if (onSale) {
-      result = result.filter((product) => product.discountedPrice !== undefined);
+      result = result.filter((product) => product.isDiscounted);
     }
 
     switch (sortOption) {
@@ -159,10 +217,18 @@ const Shop = () => {
         result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         break;
       case "priceAsc":
-        result.sort((a, b) => (a.discountedPrice || a.price) - (b.discountedPrice || b.price));
+        result.sort(
+          (a, b) =>
+            (a.discountedPrice || a.originalPrice) -
+            (b.discountedPrice || b.originalPrice)
+        );
         break;
       case "priceDesc":
-        result.sort((a, b) => (b.discountedPrice || b.price) - (a.discountedPrice || a.price));
+        result.sort(
+          (a, b) =>
+            (b.discountedPrice || b.originalPrice) -
+            (a.discountedPrice || a.originalPrice)
+        );
         break;
       default:
         break;
@@ -185,7 +251,10 @@ const Shop = () => {
 
   const indexOfLastProduct = page * productsPerPage;
   const indexOfFirstProduct = indexOfLastProduct - productsPerPage;
-  const currentProducts = filteredProducts.slice(indexOfFirstProduct, indexOfLastProduct);
+  const currentProducts = filteredProducts.slice(
+    indexOfFirstProduct,
+    indexOfLastProduct
+  );
 
   const handleViewChange = (mode) => {
     setViewMode(mode);
@@ -205,6 +274,59 @@ const Shop = () => {
         ? prev.filter((id) => id !== supplierId)
         : [...prev, supplierId]
     );
+  };
+
+  const handleAddToCart = async (productId) => {
+    const token = localStorage.getItem("token");
+    const userId = localStorage.getItem("userId");
+
+    if (!token || !userId) {
+      setSnackbar({
+        open: true,
+        message: "Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng!",
+        severity: "warning",
+      });
+      setTimeout(() => navigate("/login"), 1500);
+      return;
+    }
+
+    try {
+      const response = await axios.post(
+        "http://localhost:5000/api/cart/add",
+        {
+          userId,
+          productId,
+          quantity: 1,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      const updatedCart = response.data.cart || null;
+      const totalItems =
+        updatedCart?.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
+      window.dispatchEvent(
+        new CustomEvent("cartUpdated", { detail: { cartCount: totalItems } })
+      );
+
+      setSnackbar({
+        open: true,
+        message: "Đã thêm sản phẩm vào giỏ hàng!",
+        severity: "success",
+      });
+    } catch (error) {
+      console.error("Lỗi khi thêm vào giỏ hàng:", error);
+      setSnackbar({
+        open: true,
+        message: "Có lỗi xảy ra khi thêm sản phẩm vào giỏ hàng!",
+        severity: "error",
+      });
+    }
+  };
+
+  const handleSnackbarClose = () => {
+    setSnackbar({ ...snackbar, open: false });
   };
 
   if (loading) {
@@ -255,11 +377,21 @@ const Shop = () => {
               Tình trạng
             </Typography>
             <FormControlLabel
-              control={<Checkbox checked={inStock} onChange={(e) => setInStock(e.target.checked)} />}
+              control={
+                <Checkbox
+                  checked={inStock}
+                  onChange={(e) => setInStock(e.target.checked)}
+                />
+              }
               label="Còn hàng"
             />
             <FormControlLabel
-              control={<Checkbox checked={onSale} onChange={(e) => setOnSale(e.target.checked)} />}
+              control={
+                <Checkbox
+                  checked={onSale}
+                  onChange={(e) => setOnSale(e.target.checked)}
+                />
+              }
               label="Đang giảm giá"
             />
 
@@ -272,7 +404,7 @@ const Shop = () => {
               valueLabelDisplay="auto"
               min={0}
               max={10000000}
-              step={10000} // Bước giá thay đổi thành 10,000 VNĐ
+              step={10000}
             />
 
             <Box display="flex" alignItems="center" sx={{ mt: 2 }}>
@@ -301,7 +433,12 @@ const Shop = () => {
         </Grid>
 
         <Grid item xs={12} md={9}>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Box
+            display="flex"
+            justifyContent="space-between"
+            alignItems="center"
+            mb={2}
+          >
             <Typography variant="h6">
               {filteredProducts.length} sản phẩm
             </Typography>
@@ -335,7 +472,7 @@ const Shop = () => {
                       image={product.mainImage || "https://via.placeholder.com/200"}
                       alt={product.name}
                     />
-                    <CardContent>
+                    <CardContent sx={{ flexGrow: 1 }}>
                       <Typography variant="h6" noWrap>
                         {product.name}
                         {new Date(product.createdAt) >
@@ -349,20 +486,47 @@ const Shop = () => {
                           </Typography>
                         )}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {(product.discountedPrice || product.price).toLocaleString()} VNĐ
-                      </Typography>
-                      {product.discountedPrice && (
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={{ textDecoration: "line-through" }}
-                        >
+                      <Rating
+                        value={product.ratings || 0}
+                        readOnly
+                        precision={0.5}
+                        size="small"
+                        sx={{ my: 1 }}
+                      />
+                      {product.isDiscounted ? (
+                        <>
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            sx={{ textDecoration: "line-through" }}
+                          >
+                            {product.originalPrice.toLocaleString()} VNĐ
+                          </Typography>
+                          <Typography
+                            variant="body1"
+                            color="error"
+                            sx={{ fontWeight: "bold" }}
+                          >
+                            {product.discountedPrice.toLocaleString()} VNĐ
+                          </Typography>
+                        </>
+                      ) : (
+                        <Typography variant="body1" sx={{ fontWeight: "bold" }}>
                           {product.originalPrice.toLocaleString()} VNĐ
                         </Typography>
                       )}
                     </CardContent>
                   </Link>
+                  <Box sx={{ p: 2 }}>
+                    <AddToCartButton
+                      fullWidth
+                      variant="contained"
+                      startIcon={<ShoppingCartIcon />}
+                      onClick={() => handleAddToCart(product._id)}
+                    >
+                      Thêm vào giỏ hàng
+                    </AddToCartButton>
+                  </Box>
                 </ProductCard>
               </Grid>
             ))}
@@ -378,6 +542,21 @@ const Shop = () => {
           </Box>
         </Grid>
       </Grid>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={3000}
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={handleSnackbarClose}
+          severity={snackbar.severity}
+          sx={{ width: "100%" }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };

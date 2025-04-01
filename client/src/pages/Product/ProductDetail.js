@@ -13,6 +13,11 @@ import {
   Breadcrumbs,
   Link as MuiLink,
   Snackbar,
+  Alert,
+  Rating,
+  List,
+  ListItem,
+  ListItemText,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import axios from "axios";
@@ -22,6 +27,7 @@ import {
   Remove as RemoveIcon,
 } from "@mui/icons-material";
 import { Link } from "react-router-dom";
+
 // Styled components
 const AddToCartButton = styled(Button)(({ theme }) => ({
   marginTop: theme.spacing(2),
@@ -53,28 +59,56 @@ const ProductDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [product, setProduct] = useState(null);
+  const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState("");
   const [quantity, setQuantity] = useState(1);
-  const [snackbarOpen, setSnackbarOpen] = useState(false); // Thông báo
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: "",
+    severity: "success",
+  });
 
   useEffect(() => {
-    const fetchProduct = async () => {
+    const fetchProductAndReviews = async () => {
       try {
-        const response = await axios.get(
-          `http://localhost:5000/api/products/${id}`
+        const token = localStorage.getItem("token");
+        if (!token) {
+          navigate("/login");
+          return;
+        }
+
+        // Lấy thông tin sản phẩm
+        const productResponse = await axios.get(
+          `http://localhost:5000/api/products/${id}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
         );
-        setProduct(response.data);
-        setSelectedImage(response.data.mainImage);
+        setProduct(productResponse.data);
+        setSelectedImage(productResponse.data.mainImage);
+
+        // Lấy danh sách đánh giá
+        const reviewResponse = await axios.get(
+          "http://localhost:5000/api/reviews",
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        const productReviews = reviewResponse.data.filter(
+          (review) => review.productId._id === id
+        );
+        setReviews(productReviews);
+
         setLoading(false);
       } catch (error) {
-        console.error("Lỗi lấy thông tin sản phẩm:", error);
+        console.error("Lỗi lấy thông tin sản phẩm hoặc đánh giá:", error);
         setLoading(false);
       }
     };
 
-    fetchProduct();
-  }, [id]);
+    fetchProductAndReviews();
+  }, [id, navigate]);
 
   const handleIncrease = () => {
     setQuantity((prev) => prev + 1);
@@ -83,23 +117,31 @@ const ProductDetail = () => {
   const handleDecrease = () => {
     setQuantity((prev) => (prev > 1 ? prev - 1 : 1));
   };
+
   const handleAddToCart = async () => {
     const userId = localStorage.getItem("userId");
-    console.log("userId:", userId);
-    console.log("productId:", id);
-    console.log("quantity:", quantity);
-    if (!userId) {
-      alert("Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng!");
-      navigate("/login");
+    const token = localStorage.getItem("token");
+    if (!userId || !token) {
+      setSnackbar({
+        open: true,
+        message: "Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng!",
+        severity: "warning",
+      });
+      setTimeout(() => navigate("/login"), 1500);
       return;
     }
     try {
-      console.log("Gửi yêu cầu đến: http://localhost:5000/api/cart/add");
-      const response = await axios.post("http://localhost:5000/api/cart/add", {
-        userId,
-        productId: id,
-        quantity,
-      });
+      const response = await axios.post(
+        "http://localhost:5000/api/cart/add",
+        {
+          userId,
+          productId: id,
+          quantity,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
       const updatedCart = response.data.cart || null;
       const totalItems =
         updatedCart?.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
@@ -107,20 +149,24 @@ const ProductDetail = () => {
         new CustomEvent("cartUpdated", { detail: { cartCount: totalItems } })
       );
 
-      setSnackbarOpen(true);
+      setSnackbar({
+        open: true,
+        message: "Thêm vào giỏ hàng thành công!",
+        severity: "success",
+      });
       setTimeout(() => navigate("/cart"), 1500);
     } catch (error) {
       console.error("Lỗi khi thêm vào giỏ hàng:", error);
-      if (error.response) {
-        console.log("Status:", error.response.status);
-        console.log("Data:", error.response.data);
-      }
-      alert("Có lỗi xảy ra khi thêm sản phẩm vào giỏ hàng!");
+      setSnackbar({
+        open: true,
+        message: "Có lỗi xảy ra khi thêm sản phẩm vào giỏ hàng!",
+        severity: "error",
+      });
     }
   };
 
   const handleSnackbarClose = () => {
-    setSnackbarOpen(false);
+    setSnackbar({ ...snackbar, open: false });
   };
 
   if (loading) {
@@ -207,13 +253,46 @@ const ProductDetail = () => {
             {product.name}
           </Typography>
 
-          <Typography
-            variant="h4"
-            color="primary"
-            sx={{ fontWeight: "bold", mb: 2 }}
-          >
-            {product.price.toLocaleString()} VNĐ
-          </Typography>
+          {/* Hiển thị rating */}
+          <Box display="flex" alignItems="center" sx={{ mb: 2 }}>
+            <Rating
+              value={product.ratings || 0}
+              readOnly
+              precision={0.5}
+              size="medium"
+            />
+            <Typography variant="body2" sx={{ ml: 1 }}>
+              ({reviews.length} đánh giá)
+            </Typography>
+          </Box>
+
+          {/* Hiển thị giá gốc và giá giảm */}
+          {product.isDiscounted ? (
+            <>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ textDecoration: "line-through", mb: 1 }}
+              >
+                {product.originalPrice.toLocaleString()} VNĐ
+              </Typography>
+              <Typography
+                variant="h4"
+                color="error"
+                sx={{ fontWeight: "bold", mb: 2 }}
+              >
+                {product.discountedPrice.toLocaleString()} VNĐ
+              </Typography>
+            </>
+          ) : (
+            <Typography
+              variant="h4"
+              color="primary"
+              sx={{ fontWeight: "bold", mb: 2 }}
+            >
+              {product.originalPrice.toLocaleString()} VNĐ
+            </Typography>
+          )}
 
           <Typography variant="body1" sx={{ fontSize: "16px", mb: 2 }}>
             {product.description || "Chưa có mô tả sản phẩm."}
@@ -255,14 +334,67 @@ const ProductDetail = () => {
         </Grid>
       </Grid>
 
-      {/* Thông báo thành công */}
+      {/* Danh sách đánh giá */}
+      <Box sx={{ mt: 6 }}>
+        <Typography variant="h5" sx={{ fontWeight: "bold", mb: 2 }}>
+          Đánh giá sản phẩm
+        </Typography>
+        {reviews.length > 0 ? (
+          <List>
+            {reviews.map((review) => (
+              <ListItem key={review._id} alignItems="flex-start">
+                <ListItemText
+                  primary={
+                    <Box display="flex" alignItems="center">
+                      <Typography variant="subtitle1" sx={{ fontWeight: "bold" }}>
+                        {review.userId.name}
+                      </Typography>
+                      <Rating
+                        value={review.rating}
+                        readOnly
+                        size="small"
+                        sx={{ ml: 2 }}
+                      />
+                    </Box>
+                  }
+                  secondary={
+                    <>
+                      <Typography
+                        variant="body2"
+                        color="textSecondary"
+                        sx={{ mb: 1 }}
+                      >
+                        {new Date(review.createdAt).toLocaleDateString()}
+                      </Typography>
+                      <Typography variant="body1">{review.comment}</Typography>
+                    </>
+                  }
+                />
+              </ListItem>
+            ))}
+          </List>
+        ) : (
+          <Typography variant="body1" color="textSecondary">
+            Chưa có đánh giá nào cho sản phẩm này.
+          </Typography>
+        )}
+      </Box>
+
+      {/* Thông báo */}
       <Snackbar
-        open={snackbarOpen}
+        open={snackbar.open}
         autoHideDuration={1500}
         onClose={handleSnackbarClose}
-        message="Thêm vào giỏ hàng thành công!"
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      />
+      >
+        <Alert
+          onClose={handleSnackbarClose}
+          severity={snackbar.severity}
+          sx={{ width: "100%" }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };

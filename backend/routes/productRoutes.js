@@ -191,17 +191,34 @@ router.get("/:id", async (req, res) => {
       .populate("supplier", "name");
     if (!product) return res.status(404).json({ message: "Product not found" });
 
-    // Gọi API áp dụng giảm giá
-    const discountResponse = await axios.get(`http://localhost:5000/api/discounts/apply/${req.params.id}`);
-    const { originalPrice, discountedPrice } = discountResponse.data;
+    // Lấy token từ header của yêu cầu gốc
+    const token = req.headers.authorization;
+    if (!token) {
+      return res.status(401).json({ message: "Không có token được cung cấp!" });
+    }
+
+    // Gọi API áp dụng giảm giá với token
+    const discountResponse = await axios.get(
+      `http://localhost:5000/api/discounts/apply/${req.params.id}`,
+      {
+        headers: { Authorization: token },
+      }
+    );
+    const { originalPrice, discountedPrice, isDiscounted } = discountResponse.data;
+
+    // Tính rating trung bình
+    const averageRating = await calculateAverageRating(req.params.id);
 
     res.json({
       ...product.toObject(),
       originalPrice,
       discountedPrice,
+      isDiscounted,
+      ratings: averageRating,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("❌ Lỗi lấy sản phẩm:", err);
+    res.status(500).json({ message: "Lỗi server khi lấy sản phẩm!", error: err.message });
   }
 });
 

@@ -112,18 +112,25 @@ const Home = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      navigate("/login");
+      return;
+    }
     fetchBestSellers();
     fetchNewProducts();
     fetchParentCategories();
-  }, []);
+  }, [navigate]);
 
   const fetchBestSellers = async () => {
     try {
       setLoadingBestSellers(true);
+      const token = localStorage.getItem("token");
       const response = await axios.get(
         "http://localhost:5000/api/products/best-selling",
         {
           params: { limit: 8 },
+          headers: { Authorization: `Bearer ${token}` },
         }
       );
       setBestSellers(response.data);
@@ -138,10 +145,12 @@ const Home = () => {
   const fetchNewProducts = async () => {
     try {
       setLoadingNewProducts(true);
+      const token = localStorage.getItem("token");
       const response = await axios.get(
         "http://localhost:5000/api/products/newest",
         {
           params: { limit: 8 },
+          headers: { Authorization: `Bearer ${token}` },
         }
       );
       setNewProducts(response.data);
@@ -155,8 +164,12 @@ const Home = () => {
 
   const fetchParentCategories = async () => {
     try {
+      const token = localStorage.getItem("token");
       const response = await axios.get(
-        "http://localhost:5000/api/categories/parents"
+        "http://localhost:5000/api/categories/parents",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
       );
       setParentCategories(response.data);
     } catch (error) {
@@ -179,8 +192,12 @@ const Home = () => {
     setCurrentParentId(parentId);
     setChildAnchorEl(event.currentTarget);
     try {
+      const token = localStorage.getItem("token");
       const response = await axios.get(
-        `http://localhost:5000/api/categories/subcategories/${parentId}`
+        `http://localhost:5000/api/categories/subcategories/${parentId}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
       );
       setChildCategories((prev) => ({ ...prev, [parentId]: response.data }));
     } catch (error) {

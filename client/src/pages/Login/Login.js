@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom"; // Thêm Link vào import
 import {
   Container,
   Paper,
@@ -14,6 +14,7 @@ import { styled } from "@mui/material/styles";
 import axios from "axios";
 import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
 
+// Styled components cho trang login
 const LoginContainer = styled(Container)(({ theme }) => ({
   height: "100vh",
   display: "flex",
@@ -68,15 +69,11 @@ const Login = () => {
 
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
-      localStorage.setItem("userId", user._id);
-
-      // Dispatch sự kiện userUpdated
-      window.dispatchEvent(new CustomEvent("userUpdated"));
 
       if (["admin", "sales", "manager"].includes(user.role)) {
-        window.location.href = `http://localhost:3001/manage-products?token=${token}`;
+        window.location.href = `http://localhost:3001/manage-products?token=${token}`; // Redirect to admin page
       } else {
-        navigate("/"); // Điều hướng mà không reload
+        navigate("/");
       }
     } catch (error) {
       setError(error.response?.data?.message || "Đăng nhập thất bại!");
@@ -94,13 +91,10 @@ const Login = () => {
       localStorage.setItem("user", JSON.stringify(user));
       localStorage.setItem("userId", user._id);
 
-      // Dispatch sự kiện userUpdated
-      window.dispatchEvent(new CustomEvent("userUpdated"));
-
       if (["admin", "sales", "manager"].includes(user.role)) {
-        window.location.href = `http://localhost:3001/manage-products?token=${token}`;
+        window.location.href = `http://localhost:3001/manage-products?token=${token}`; // Redirect to admin page
       } else {
-        navigate("/"); // Thay vì reload, dùng navigate
+        window.location.href = "/";
       }
     } catch (error) {
       setError(error.response?.data?.message || "Đăng nhập bằng Google thất bại!");

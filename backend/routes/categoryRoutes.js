@@ -61,7 +61,7 @@ router.get("/", authToken, async (req, res) => {
 });
 
 // API lấy danh mục cha (Cho phép tất cả người dùng đã đăng nhập)
-router.get("/parents", authToken, async (req, res) => {
+router.get("/parents", async (req, res) => {
   try {
     const parentCategories = await Category.find({ parent: null });
     if (!parentCategories) {
@@ -75,7 +75,7 @@ router.get("/parents", authToken, async (req, res) => {
 });
 
 // Get category by ID (Cho phép tất cả người dùng đã đăng nhập)
-router.get("/:id", authToken, async (req, res) => {
+router.get("/:id", async (req, res) => {
   try {
     const category = await Category.findById(req.params.id);
     if (!category) return res.status(404).json({ message: "Category not found" });
@@ -86,7 +86,7 @@ router.get("/:id", authToken, async (req, res) => {
 });
 
 // API lấy danh mục con theo danh mục cha (Cho phép tất cả người dùng đã đăng nhập)
-router.get("/subcategories/:parentId", authToken, async (req, res) => {
+router.get("/subcategories/:parentId" , async (req, res) => {
   try {
     const subcategories = await Category.find({ parent: req.params.parentId });
     res.json(subcategories);
