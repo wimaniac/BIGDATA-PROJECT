@@ -2,16 +2,16 @@ import express from "express";
 import Review from "../models/Review.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
-import User from "../models/User.js"; 
+import User from "../models/User.js";
+
 const router = express.Router();
 
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
   const token = authHeader?.split(" ")[1];
   if (!token) {
-    return res.status(401).json({ message: "No token provided" });
+    return res.status(401).json({ message: "Không token được cung cấp" });
   }
-
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.userId = decoded.id;
@@ -20,8 +20,32 @@ const authMiddleware = (req, res, next) => {
     return res.status(401).json({ message: "Token không hợp lệ!" });
   }
 };
-// Get all reviews
-router.get("/", async (req, res) => {
+
+// Middleware chỉ cho phép manager hoặc admin
+const authAdminOrManager = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ message: "Không token được cung cấp" });
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng" });
+    }
+    if (user.role !== "admin" && user.role !== "manager") {
+      return res.status(403).json({ message: "Bạn không có quyền thực hiện hành động này!" });
+    }
+    req.userId = decoded.id;
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: "Token không hợp lệ!" });
+  }
+};
+
+// Get all reviews (yêu cầu đăng nhập)
+router.get("/", authMiddleware, async (req, res) => {
   try {
     const reviews = await Review.find()
       .populate("userId", "name email")
@@ -32,20 +56,20 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Get review by ID
-router.get("/:id", async (req, res) => {
+// Get review by ID (yêu cầu đăng nhập)
+router.get("/:id", authMiddleware, async (req, res) => {
   try {
     const review = await Review.findById(req.params.id)
       .populate("userId", "name email")
       .populate("productId", "name");
-    if (!review) return res.status(404).json({ message: "Review not found" });
+    if (!review) return res.status(404).json({ message: "Không tìm thấy đánh giá" });
     res.json(review);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// Create a new review (yêu cầu xác thực)
+// Create a new review (yêu cầu đăng nhập)
 router.post("/", authMiddleware, async (req, res) => {
   const { productId, rating, comment } = req.body;
 
@@ -76,13 +100,12 @@ router.post("/", authMiddleware, async (req, res) => {
   }
 });
 
-// Update review
+// Update review (yêu cầu người tạo đánh giá)
 router.put("/:id", authMiddleware, async (req, res) => {
   try {
     const review = await Review.findById(req.params.id);
-    if (!review) return res.status(404).json({ message: "Review not found" });
+    if (!review) return res.status(404).json({ message: "Không tìm thấy đánh giá sản phẩm" });
 
-    // Kiểm tra quyền chỉnh sửa (chỉ người tạo đánh giá mới được sửa)
     if (review.userId.toString() !== req.userId) {
       return res.status(403).json({ message: "Bạn không có quyền chỉnh sửa đánh giá này!" });
     }
@@ -96,34 +119,22 @@ router.put("/:id", authMiddleware, async (req, res) => {
   }
 });
 
-// Delete review
-router.delete("/:id", authMiddleware, async (req, res) => {
+// Delete review (chỉ manager hoặc admin)
+router.delete("/:id", authAdminOrManager, async (req, res) => {
   try {
-    // Validate reviewId
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({ message: "ID đánh giá không hợp lệ" });
     }
 
     const review = await Review.findById(req.params.id);
     if (!review) {
-      return res.status(404).json({ message: "Review not found" });
-    }
-
-    // Fetch the user to check permissions
-    const user = await User.findById(req.userId);
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    // Check if the user is the review creator or an admin
-    if (review.userId.toString() !== req.userId && user.role !== "admin") {
-      return res.status(403).json({ message: "Bạn không có quyền xóa đánh giá này!" });
+      return res.status(404).json({ message: "Không tìm thấy đánh giá sản phẩm" });
     }
 
     await Review.findByIdAndDelete(req.params.id);
-    return res.json({ message: "Review deleted" });
+    return res.json({ message: "Đã xóa đánh giá sản phẩm" });
   } catch (err) {
-    console.error("Error deleting review:", err); // Log the error for debugging
+    console.error("Error deleting review:", err);
     return res.status(500).json({ message: "Lỗi server khi xóa đánh giá", error: err.message });
   }
 });

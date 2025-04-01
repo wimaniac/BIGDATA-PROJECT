@@ -1,9 +1,29 @@
 import express from "express";
 import Category from "../models/Category.js";
-import User from "../models/User.js"; // Thêm User để kiểm tra role
-import jwt from "jsonwebtoken"; // Thêm jwt để xác thực token
+import User from "../models/User.js";
+import jwt from "jsonwebtoken";
 
 const router = express.Router();
+
+// Middleware kiểm tra token hợp lệ (cho phép tất cả vai trò đã đăng nhập)
+const authToken = async (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ message: "Không có token được cung cấp!" });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng!" });
+    }
+    req.user = user;
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: "Token không hợp lệ!" });
+  }
+};
 
 // Middleware kiểm tra quyền admin hoặc manager
 const authAdminOrManager = async (req, res, next) => {
@@ -30,27 +50,7 @@ const authAdminOrManager = async (req, res, next) => {
   }
 };
 
-// Middleware kiểm tra token hợp lệ (cho phép tất cả vai trò xem)
-const authToken = async (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) {
-    return res.status(401).json({ message: "Không có token được cung cấp!" });
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id);
-    if (!user) {
-      return res.status(404).json({ message: "Không tìm thấy người dùng!" });
-    }
-    req.user = user;
-    next();
-  } catch (error) {
-    return res.status(401).json({ message: "Token không hợp lệ!" });
-  }
-};
-
-// Get all categories (Chỉ cần token hợp lệ)
+// Get all categories (Cho phép tất cả người dùng đã đăng nhập)
 router.get("/", authToken, async (req, res) => {
   try {
     const categories = await Category.find();
@@ -60,7 +60,7 @@ router.get("/", authToken, async (req, res) => {
   }
 });
 
-// API lấy danh mục cha (parent = null) (Chỉ cần token hợp lệ)
+// API lấy danh mục cha (Cho phép tất cả người dùng đã đăng nhập)
 router.get("/parents", authToken, async (req, res) => {
   try {
     const parentCategories = await Category.find({ parent: null });
@@ -74,19 +74,18 @@ router.get("/parents", authToken, async (req, res) => {
   }
 });
 
-// Get category by ID (Chỉ cần token hợp lệ)
+// Get category by ID (Cho phép tất cả người dùng đã đăng nhập)
 router.get("/:id", authToken, async (req, res) => {
   try {
     const category = await Category.findById(req.params.id);
-    if (!category)
-      return res.status(404).json({ message: "Category not found" });
+    if (!category) return res.status(404).json({ message: "Category not found" });
     res.json(category);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// API lấy danh mục con theo danh mục cha (Chỉ cần token hợp lệ)
+// API lấy danh mục con theo danh mục cha (Cho phép tất cả người dùng đã đăng nhập)
 router.get("/subcategories/:parentId", authToken, async (req, res) => {
   try {
     const subcategories = await Category.find({ parent: req.params.parentId });
@@ -113,13 +112,10 @@ router.post("/", authAdminOrManager, async (req, res) => {
 // Update category (Chỉ admin hoặc manager)
 router.put("/:id", authAdminOrManager, async (req, res) => {
   try {
-    const updatedCategory = await Category.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    );
-    if (!updatedCategory)
-      return res.status(404).json({ message: "Category not found" });
+    const updatedCategory = await Category.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+    });
+    if (!updatedCategory) return res.status(404).json({ message: "Category not found" });
     res.json(updatedCategory);
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -130,8 +126,7 @@ router.put("/:id", authAdminOrManager, async (req, res) => {
 router.delete("/:id", authAdminOrManager, async (req, res) => {
   try {
     const deletedCategory = await Category.findByIdAndDelete(req.params.id);
-    if (!deletedCategory)
-      return res.status(404).json({ message: "Category not found" });
+    if (!deletedCategory) return res.status(404).json({ message: "Category not found" });
     res.json({ message: "Category deleted" });
   } catch (err) {
     res.status(500).json({ message: err.message });

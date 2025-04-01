@@ -8,6 +8,23 @@ import mongoose from "mongoose";
 const router = express.Router();
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+const blacklistedTokens = new Set();
+router.post("/auth/logout", (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (token) {
+    blacklistedTokens.add(token);
+  }
+  res.json({ message: "Đăng xuất thành công!" });
+});
+
+// Middleware kiểm tra token
+const checkBlacklist = (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (blacklistedTokens.has(token)) {
+    return res.status(401).json({ message: "Token đã bị vô hiệu hóa!" });
+  }
+  next();
+};
 // Get all users
 router.get("/", async (req, res) => {
   try {

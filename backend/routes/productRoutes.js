@@ -69,10 +69,19 @@ router.get("/", async (req, res) => {
 
     const products = await query.exec();
 
+    const token = req.headers.authorization; 
+    if (!token) {
+      return res.status(401).json({ message: "Không có token được cung cấp!" });
+    }
+
     const productsWithDiscountAndRating = await Promise.all(
       products.map(async (product) => {
+        // Gửi yêu cầu với header Authorization
         const discountResponse = await axios.get(
-          `http://localhost:5000/api/discounts/apply/${product._id}`
+          `http://localhost:5000/api/discounts/apply/${product._id}`,
+          {
+            headers: { Authorization: token }, // Thêm token vào header
+          }
         );
         const averageRating = await calculateAverageRating(product._id);
         return {
@@ -80,7 +89,7 @@ router.get("/", async (req, res) => {
           originalPrice: discountResponse.data.originalPrice,
           discountedPrice: discountResponse.data.discountedPrice,
           isDiscounted: discountResponse.data.isDiscounted,
-          ratings: averageRating, 
+          ratings: averageRating,
         };
       })
     );
@@ -91,9 +100,15 @@ router.get("/", async (req, res) => {
     res.status(500).json({ message: "Lỗi server khi lấy sản phẩm!", error: error.message });
   }
 });
+
 router.get("/best-selling", async (req, res) => {
   try {
     const { limit = 8 } = req.query;
+    const token = req.headers.authorization; // Lấy token từ header
+    if (!token) {
+      return res.status(401).json({ message: "Không có token được cung cấp!" });
+    }
+
     const products = await Product.find({ popularityRank: { $gt: 0 } })
       .populate("parentCategory", "name")
       .populate("subCategory", "name")
@@ -104,7 +119,10 @@ router.get("/best-selling", async (req, res) => {
     const productsWithDiscountAndRating = await Promise.all(
       products.map(async (product) => {
         const discountResponse = await axios.get(
-          `http://localhost:5000/api/discounts/apply/${product._id}`
+          `http://localhost:5000/api/discounts/apply/${product._id}`,
+          {
+            headers: { Authorization: token }, // Truyền token vào yêu cầu
+          }
         );
         const averageRating = await calculateAverageRating(product._id);
         return {
@@ -112,7 +130,7 @@ router.get("/best-selling", async (req, res) => {
           originalPrice: discountResponse.data.originalPrice,
           discountedPrice: discountResponse.data.discountedPrice,
           isDiscounted: discountResponse.data.isDiscounted,
-          ratings: averageRating, 
+          ratings: averageRating,
         };
       })
     );
@@ -127,6 +145,11 @@ router.get("/best-selling", async (req, res) => {
 router.get("/newest", async (req, res) => {
   try {
     const { limit = 8 } = req.query;
+    const token = req.headers.authorization; // Lấy token từ header
+    if (!token) {
+      return res.status(401).json({ message: "Không có token được cung cấp!" });
+    }
+
     const products = await Product.find()
       .populate("parentCategory", "name")
       .populate("subCategory", "name")
@@ -137,7 +160,10 @@ router.get("/newest", async (req, res) => {
     const productsWithDiscountAndRating = await Promise.all(
       products.map(async (product) => {
         const discountResponse = await axios.get(
-          `http://localhost:5000/api/discounts/apply/${product._id}`
+          `http://localhost:5000/api/discounts/apply/${product._id}`,
+          {
+            headers: { Authorization: token }, // Truyền token vào yêu cầu
+          }
         );
         const averageRating = await calculateAverageRating(product._id);
         return {
@@ -145,7 +171,7 @@ router.get("/newest", async (req, res) => {
           originalPrice: discountResponse.data.originalPrice,
           discountedPrice: discountResponse.data.discountedPrice,
           isDiscounted: discountResponse.data.isDiscounted,
-          ratings: averageRating, // Thêm trung bình rating
+          ratings: averageRating,
         };
       })
     );

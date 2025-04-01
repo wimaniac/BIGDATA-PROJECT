@@ -2,11 +2,50 @@ import express from "express";
 import Inventory from "../models/Inventory.js";
 import mongoose from "mongoose";
 import Product from "../models/Product.js";
+import User from "../models/User.js";
+import jwt from "jsonwebtoken";
 
 const router = express.Router();
 
-// Get all inventory items
-router.get("/", async (req, res) => {
+// Middleware kiểm tra token
+const authMiddleware = async (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ message: "Không có token được cung cấp!" });
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.userId = decoded.id;
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: "Token không hợp lệ!" });
+  }
+};
+
+// Middleware chỉ cho phép manager hoặc admin
+const authAdminOrManager = async (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ message: "Không có token được cung cấp!" });
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng!" });
+    }
+    if (user.role !== "admin" && user.role !== "manager") {
+      return res.status(403).json({ message: "Bạn không có quyền thực hiện hành động này!" });
+    }
+    req.userId = decoded.id;
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: "Token không hợp lệ!" });
+  }
+};
+
+// Get all inventory items (yêu cầu đăng nhập)
+router.get("/", authMiddleware, async (req, res) => {
   try {
     const inventoryItems = await Inventory.find();
     res.json(inventoryItems);
@@ -15,8 +54,8 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Get inventory item by ID
-router.get("/:id", async (req, res) => {
+// Get inventory item by ID (yêu cầu đăng nhập)
+router.get("/:id", authMiddleware, async (req, res) => {
   try {
     const inventoryItem = await Inventory.findById(req.params.id);
     if (!inventoryItem)
@@ -27,8 +66,8 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// Get inventory items by category
-router.get("/category/:categoryId", async (req, res) => {
+// Get inventory items by category (yêu cầu đăng nhập)
+router.get("/category/:categoryId", authMiddleware, async (req, res) => {
   try {
     const inventoryItems = await Inventory.find({
       category: req.params.categoryId,
@@ -39,9 +78,8 @@ router.get("/category/:categoryId", async (req, res) => {
   }
 });
 
-// Thêm mới tồn kho (POST)
-router.post("/", async (req, res) => {
-  console.log("Dữ liệu nhận được từ frontend:", req.body);
+// Thêm mới tồn kho (chỉ manager hoặc admin)
+router.post("/", authAdminOrManager, async (req, res) => {
   const { product, quantity, price, category, warehouse } = req.body;
 
   if (!product || !quantity || !warehouse) {
@@ -80,9 +118,8 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Chỉnh sửa tồn kho (PUT) - Không đồng bộ stock
-router.put("/:id", async (req, res) => {
-  console.log("Dữ liệu nhận được từ frontend:", req.body);
+// Chỉnh sửa tồn kho (chỉ manager hoặc admin)
+router.put("/:id", authAdminOrManager, async (req, res) => {
   const { quantity, product } = req.body;
 
   try {
@@ -103,13 +140,13 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-// Xóa tồn kho (DELETE) - Không đồng bộ stock
-router.delete("/:id", async (req, res) => {
+// Xóa tồn kho (chỉ manager hoặc admin)
+router.delete("/:id", authAdminOrManager, async (req, res) => {
   try {
     const deletedInventoryItem = await Inventory.findByIdAndDelete(req.params.id);
     if (!deletedInventoryItem)
-      return res.status(404).json({ message: "Inventory item not found" });
-    res.json({ message: "Inventory item deleted" });
+      return res.status(404).json({ message: "Không tìm thấy mục hàng tồn kho" });
+    res.json({ message: "Đã xóa mục hàng tồn kho" });
   } catch (err) {
     console.error("Lỗi trong DELETE /api/inventory/:id:", err);
     res.status(500).json({ message: err.message });

@@ -1,22 +1,51 @@
 import express from "express";
 import mongoose from "mongoose";
 import Warehouse from "../models/Warehouse.js";
-import Inventory from "../models/Inventory.js"; // Kiểm tra kho có chứa hàng không
+import Inventory from "../models/Inventory.js";
+import User from "../models/User.js";
+import jwt from "jsonwebtoken";
 
 const router = express.Router();
 
-// Middleware kiểm tra vai trò (chỉ cho phép admin/manager thực hiện thay đổi)
-const checkRole = async (req, res, next) => {
+// Middleware kiểm tra token
+const authMiddleware = async (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) {
     return res.status(401).json({ message: "Không có token!" });
   }
-  // Logic kiểm tra role (giả định bạn có hệ thống auth)
-  next();
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.userId = decoded.id;
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: "Token không hợp lệ!" });
+  }
 };
 
-// 🏢 **Lấy danh sách tất cả kho**
-router.get("/", async (req, res) => {
+// Middleware chỉ cho phép admin
+const authAdminOnly = async (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ message: "Không có token!" });
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng!" });
+    }
+    if (user.role !== "admin") {
+      return res.status(403).json({ message: "Bạn không có quyền thực hiện hành động này!" });
+    }
+    req.userId = decoded.id;
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: "Token không hợp lệ!" });
+  }
+};
+
+// Lấy danh sách tất cả kho (yêu cầu đăng nhập)
+router.get("/", authMiddleware, async (req, res) => {
   try {
     const warehouses = await Warehouse.find().lean();
     res.json(warehouses);
@@ -25,8 +54,8 @@ router.get("/", async (req, res) => {
   }
 });
 
-// 📍 **Lấy thông tin kho theo ID**
-router.get("/:id", async (req, res) => {
+// Lấy thông tin kho theo ID (yêu cầu đăng nhập)
+router.get("/:id", authMiddleware, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({ message: "ID không hợp lệ!" });
@@ -39,11 +68,10 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// 📦 **Tạo kho mới**
-router.post("/", checkRole, async (req, res) => {
+// Tạo kho mới (chỉ admin)
+router.post("/", authAdminOnly, async (req, res) => {
   const { name, location, capacity } = req.body;
 
-  // Kiểm tra dữ liệu đầu vào
   if (!name || !location?.city) {
     return res.status(400).json({ message: "Tên kho và thành phố là bắt buộc!" });
   }
@@ -65,8 +93,8 @@ router.post("/", checkRole, async (req, res) => {
   }
 });
 
-// 📝 **Cập nhật thông tin kho**
-router.put("/:id", checkRole, async (req, res) => {
+// Cập nhật thông tin kho (chỉ admin)
+router.put("/:id", authAdminOnly, async (req, res) => {
   const { name, location, capacity } = req.body;
 
   try {
@@ -77,7 +105,6 @@ router.put("/:id", checkRole, async (req, res) => {
     const warehouse = await Warehouse.findById(req.params.id);
     if (!warehouse) return res.status(404).json({ message: "Kho không tồn tại" });
 
-    // Cập nhật thông tin nếu có
     warehouse.name = name || warehouse.name;
     warehouse.location = location || warehouse.location;
     warehouse.capacity = capacity ? parseInt(capacity) : warehouse.capacity;
@@ -89,8 +116,8 @@ router.put("/:id", checkRole, async (req, res) => {
   }
 });
 
-// ❌ **Xóa kho**
-router.delete("/:id", checkRole, async (req, res) => {
+// Xóa kho (chỉ admin)
+router.delete("/:id", authAdminOnly, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({ message: "ID không hợp lệ!" });
@@ -99,7 +126,6 @@ router.delete("/:id", checkRole, async (req, res) => {
     const warehouse = await Warehouse.findById(req.params.id);
     if (!warehouse) return res.status(404).json({ message: "Kho không tồn tại" });
 
-    // Kiểm tra kho có đang chứa hàng không
     const inventoryInUse = await Inventory.findOne({ warehouse: req.params.id });
     if (inventoryInUse) {
       return res.status(400).json({ message: "Không thể xóa kho đang chứa hàng!" });

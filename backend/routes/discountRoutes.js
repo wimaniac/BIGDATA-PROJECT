@@ -1,12 +1,52 @@
 import express from "express";
 import Discount from "../models/Discount.js";
 import Product from "../models/Product.js";
+import jwt from "jsonwebtoken";
+import User from "../models/User.js";
 
 const router = express.Router();
 
+// Middleware kiểm tra token
+const authMiddleware = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ message: "No token provided" });
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.userId = decoded.id;
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: "Token không hợp lệ!" });
+  }
+};
 
-// Tạo giảm giá mới
-router.post("/", async (req, res) => {
+// Middleware chỉ cho phép manager hoặc admin
+const authAdminOrManager = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ message: "No token provided" });
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    if (user.role !== "admin" && user.role !== "manager") {
+      return res.status(403).json({ message: "Bạn không có quyền thực hiện hành động này!" });
+    }
+    req.userId = decoded.id;
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: "Token không hợp lệ!" });
+  }
+};
+
+// Tạo giảm giá mới (chỉ manager hoặc admin)
+router.post("/", authAdminOrManager, async (req, res) => {
   const {
     code,
     description,
@@ -21,13 +61,11 @@ router.post("/", async (req, res) => {
   } = req.body;
 
   try {
-    // Kiểm tra mã giảm giá đã tồn tại chưa
     const existingDiscount = await Discount.findOne({ code });
     if (existingDiscount) {
       return res.status(400).json({ message: "Mã giảm giá đã tồn tại!" });
     }
 
-    // Kiểm tra thời gian hợp lệ
     if (new Date(startDate) >= new Date(endDate)) {
       return res.status(400).json({ message: "Ngày bắt đầu phải trước ngày kết thúc!" });
     }
@@ -53,8 +91,8 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Lấy tất cả giảm giá
-router.get("/", async (req, res) => {
+// Lấy tất cả giảm giá (yêu cầu đăng nhập)
+router.get("/", authMiddleware, async (req, res) => {
   try {
     const discounts = await Discount.find()
       .populate("applicableProducts", "name price")
@@ -66,8 +104,8 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Lấy giảm giá theo ID
-router.get("/:id", async (req, res) => {
+// Lấy giảm giá theo ID (yêu cầu đăng nhập)
+router.get("/:id", authMiddleware, async (req, res) => {
   try {
     const discount = await Discount.findById(req.params.id)
       .populate("applicableProducts", "name price")
@@ -79,13 +117,12 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// Cập nhật giảm giá
-router.put("/:id", async (req, res) => {
+// Cập nhật giảm giá (chỉ manager hoặc admin)
+router.put("/:id", authAdminOrManager, async (req, res) => {
   try {
     const discount = await Discount.findById(req.params.id);
     if (!discount) return res.status(404).json({ message: "Không tìm thấy giảm giá!" });
 
-    // Cập nhật các trường
     discount.code = req.body.code || discount.code;
     discount.description = req.body.description || discount.description;
     discount.discountType = req.body.discountType || discount.discountType;
@@ -106,8 +143,8 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-// Xóa giảm giá
-router.delete("/:id", async (req, res) => {
+// Xóa giảm giá (chỉ manager hoặc admin)
+router.delete("/:id", authAdminOrManager, async (req, res) => {
   try {
     const discount = await Discount.findByIdAndDelete(req.params.id);
     if (!discount) return res.status(404).json({ message: "Không tìm thấy giảm giá!" });
@@ -117,8 +154,8 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-// Lấy giá sản phẩm sau khi áp dụng giảm giá
-router.get("/apply/:productId", async (req, res) => {
+// Lấy giá sản phẩm sau khi áp dụng giảm giá (yêu cầu đăng nhập)
+router.get("/apply/:productId", authMiddleware, async (req, res) => {
   const { productId } = req.params;
   const currentDate = new Date();
 
@@ -126,12 +163,11 @@ router.get("/apply/:productId", async (req, res) => {
     const product = await Product.findById(productId);
     if (!product) return res.status(404).json({ message: "Không tìm thấy sản phẩm!" });
 
-    // Tìm giảm giá áp dụng cho sản phẩm hoặc danh mục của nó
     const discounts = await Discount.find({
       $or: [
         { applicableProducts: productId },
         { applicableCategories: { $in: [product.parentCategory, product.subCategory] } },
-        { applicableProducts: { $size: 0 }, applicableCategories: { $size: 0 } }, // Áp dụng toàn bộ nếu không chỉ định
+        { applicableProducts: { $size: 0 }, applicableCategories: { $size: 0 } },
       ],
       isActive: true,
       startDate: { $lte: currentDate },
@@ -142,11 +178,10 @@ router.get("/apply/:productId", async (req, res) => {
       return res.json({
         originalPrice: product.price,
         discountedPrice: product.price,
-        isDiscounted: false, // Thêm trường này
+        isDiscounted: false,
       });
     }
 
-    // Chọn giảm giá tốt nhất (ưu tiên giảm giá cao nhất)
     let bestDiscountedPrice = product.price;
     discounts.forEach((discount) => {
       let discountedPrice;
@@ -165,8 +200,8 @@ router.get("/apply/:productId", async (req, res) => {
 
     res.json({
       originalPrice: product.price,
-      discountedPrice: Math.max(0, bestDiscountedPrice), // Đảm bảo giá không âm
-      isDiscounted: true, // Có giảm giá
+      discountedPrice: Math.max(0, bestDiscountedPrice),
+      isDiscounted: true,
     });
   } catch (error) {
     console.error("Lỗi khi áp dụng giảm giá:", error);
