@@ -44,18 +44,21 @@ const EditProduct = () => {
   }, []);
   const fetchProduct = async () => {
     try {
-      const response = await axios.get(
-        `http://localhost:5000/api/products/${id}`
-      );
+      const token = localStorage.getItem("token"); // Retrieve token
+      const response = await axios.get(`http://localhost:5000/api/products/${id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       console.log("📩 Dữ liệu sản phẩm từ API:", response.data);
-
+  
       setProductData({
         ...response.data,
         parentCategory: response.data.parentCategory?._id || "",
         subCategory: response.data.subCategory?._id || "",
-        supplier: response.data.supplier?._id || "", // Đảm bảo supplier là _id
+        supplier: response.data.supplier?._id || "",
       });
-
+  
       fetchSubcategories(response.data.parentCategory?._id);
     } catch (error) {
       console.error("Lỗi lấy thông tin sản phẩm:", error);
@@ -87,8 +90,13 @@ const EditProduct = () => {
 
   const fetchSuppliers = async () => {
     try {
-      const response = await axios.get("http://localhost:5000/api/suppliers");
-      console.log("📩 Danh sách nhà cung cấp từ API:", response.data); // Kiểm tra dữ liệu trả về
+      const token = localStorage.getItem("token");
+      const response = await axios.get("http://localhost:5000/api/suppliers", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      console.log("📩 Danh sách nhà cung cấp từ API:", response.data);
       setSuppliers(response.data);
     } catch (error) {
       console.error("Lỗi lấy danh sách nhà cung cấp:", error);

@@ -118,14 +118,12 @@ router.get("/", authMiddleware, async (req, res) => {
 // Get best-selling products
 router.get("/best-selling", authMiddleware, async (req, res) => {
   try {
-    const { limit = 8 } = req.query;
 
     const products = await Product.find({ popularityRank: { $gt: 0 } })
       .populate("parentCategory", "name")
       .populate("subCategory", "name")
       .populate("supplier", "name")
       .sort({ popularityRank: 1 })
-      .limit(parseInt(limit));
 
     const productsWithDiscountAndRating = await Promise.all(
       products.map(async (product) => {
@@ -168,14 +166,12 @@ router.get("/best-selling", authMiddleware, async (req, res) => {
 // Get newest products
 router.get("/newest", authMiddleware, async (req, res) => {
   try {
-    const { limit = 8 } = req.query;
 
     const products = await Product.find()
       .populate("parentCategory", "name")
       .populate("subCategory", "name")
       .populate("supplier", "name")
       .sort({ createdAt: -1 })
-      .limit(parseInt(limit));
 
     const productsWithDiscountAndRating = await Promise.all(
       products.map(async (product) => {

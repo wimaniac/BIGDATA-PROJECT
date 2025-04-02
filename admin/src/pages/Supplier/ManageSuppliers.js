@@ -38,13 +38,25 @@ const ManageSuppliers = () => {
 
   const fetchSuppliers = async () => {
     try {
-      const response = await axios.get("http://localhost:5000/api/suppliers");
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("No token found, please log in.");
+      }
+      const response = await axios.get("http://localhost:5000/api/suppliers", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       setSuppliers(response.data);
     } catch (error) {
       console.error("Lỗi lấy danh sách nhà cung cấp:", error);
+      setSnackbar({
+        open: true,
+        message: "Không thể tải danh sách nhà cung cấp. Vui lòng đăng nhập lại!",
+        severity: "error",
+      });
     }
   };
-
   const handleOpenDialog = (supplier = null) => {
     setEditSupplier(supplier);
     setSupplierData(supplier ? { name: supplier.name, email: supplier.email, phone: supplier.phone } : { name: "", email: "", phone: "" });

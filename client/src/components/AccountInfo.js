@@ -290,15 +290,7 @@ const AccountInfo = () => {
                   variant="outlined"
                 />
               </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  label="Vai trò"
-                  value={user.role || "customer"}
-                  fullWidth
-                  disabled
-                  variant="outlined"
-                />
-              </Grid>
+
             </Grid>
           </Grid>
 

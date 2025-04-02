@@ -5,8 +5,8 @@ const discountSchema = new mongoose.Schema(
     code: {
       type: String,
       required: true,
-      unique: true, // Mã giảm giá phải duy nhất
-      uppercase: true, // Chuyển thành chữ in hoa
+      unique: true, 
+      uppercase: true, 
       trim: true,
     },
     description: {
@@ -15,47 +15,47 @@ const discountSchema = new mongoose.Schema(
     },
     discountType: {
       type: String,
-      enum: ["percentage", "fixed"], // Loại giảm giá: phần trăm hoặc cố định
+      enum: ["percentage", "fixed"], 
       required: true,
     },
     discountValue: {
       type: Number,
-      required: true, // Giá trị giảm (phần trăm hoặc số tiền cố định)
+      required: true, 
       min: 0,
     },
     minPurchase: {
       type: Number,
-      default: 0, // Số tiền tối thiểu để áp dụng giảm giá
+      default: 0, 
       min: 0,
     },
     maxDiscount: {
       type: Number,
-      default: null, // Giới hạn tối đa của giảm giá (dùng cho percentage)
+      default: null,
       min: 0,
     },
     applicableProducts: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Product", // Danh sách sản phẩm áp dụng giảm giá
+        ref: "Product",
       },
     ],
     applicableCategories: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Category", // Danh sách danh mục áp dụng giảm giá
+        ref: "Category", 
       },
     ],
     startDate: {
       type: Date,
-      required: true, // Ngày bắt đầu áp dụng
+      required: true, 
     },
     endDate: {
       type: Date,
-      required: true, // Ngày kết thúc áp dụng
+      required: true, 
     },
     isActive: {
       type: Boolean,
-      default: true, // Trạng thái hoạt động
+      default: true, 
     },
   },
   { timestamps: true }

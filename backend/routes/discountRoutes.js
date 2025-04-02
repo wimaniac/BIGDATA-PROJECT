@@ -117,7 +117,6 @@ router.get("/:id", authMiddleware, async (req, res) => {
   }
 });
 
-// Cập nhật giảm giá (chỉ manager hoặc admin)
 router.put("/:id", authAdminOrManager, async (req, res) => {
   try {
     const discount = await Discount.findById(req.params.id);
@@ -143,7 +142,6 @@ router.put("/:id", authAdminOrManager, async (req, res) => {
   }
 });
 
-// Xóa giảm giá (chỉ manager hoặc admin)
 router.delete("/:id", authAdminOrManager, async (req, res) => {
   try {
     const discount = await Discount.findByIdAndDelete(req.params.id);

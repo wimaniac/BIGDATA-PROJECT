@@ -42,7 +42,8 @@ const FilterBox = styled(Box)(({ theme }) => ({
 }));
 
 const ProductCard = styled(Card)(({ theme }) => ({
-  height: "100%",
+  height: "450px", 
+  width: "217px",
   display: "flex",
   flexDirection: "column",
   transition: "0.3s",
@@ -58,6 +59,11 @@ const AddToCartButton = styled(Button)(({ theme }) => ({
   fontWeight: "bold",
   backgroundColor: "#1976d2",
   color: "#fff",
+  padding: "8px 9px",
+  fontSize: "14px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
   "&:hover": {
     backgroundColor: "#1565c0",
   },
@@ -517,9 +523,8 @@ const Shop = () => {
                       )}
                     </CardContent>
                   </Link>
-                  <Box sx={{ p: 2 }}>
+                  <Box sx={{ p: 2, display: "flex", justifyContent: "center" }}>
                     <AddToCartButton
-                      fullWidth
                       variant="contained"
                       startIcon={<ShoppingCartIcon />}
                       onClick={() => handleAddToCart(product._id)}

@@ -64,43 +64,50 @@ const partitionFunction = (keyValuePairs) => {
   return partitionedData;
 };
 
-// Map Phase (Task Tracker M1, M2, M3)
-const MapPhase = async (orders) => {
-  const keyValuePairs = orders.flatMap(order => mapFunction(order));
-  const partitionedData = partitionFunction(keyValuePairs);
-  return partitionedData; // Trả về dữ liệu trung gian (Region1, Region2)
-};
+// Region Function: Lưu trữ dữ liệu trung gian vào các Region
+const regionFunction = (partitionedData) => {
+  const regions = {
+    region1: {}, // Dữ liệu cho category
+    region2: {}  // Dữ liệu cho time (day, month, year)
+  };
 
-// Sort Function
-const sortFunction = (partitionedData) => {
-  const sortedData = { category: [], time: { day: [], month: [], year: [] } };
-
+  // Phân chia dữ liệu vào các Region
   for (const key in partitionedData) {
     const [type, id] = key.split(":");
     if (type === "category") {
-      sortedData.category.push({ key, values: partitionedData[key] });
+      regions.region1[key] = partitionedData[key];
     } else {
-      const period = type;
-      sortedData.time[period].push({ key, values: partitionedData[key] });
+      regions.region2[key] = partitionedData[key];
     }
   }
 
-  // Sắp xếp dữ liệu thời gian theo thời gian
-  ["day", "month", "year"].forEach(period => {
-    sortedData.time[period].sort((a, b) => a.key.localeCompare(b.key));
-  });
+  // Mô phỏng việc lưu trữ vào RAM (trong thực tế, có thể lưu vào file hoặc cơ chế lưu trữ tạm thời)
+  console.log("Storing data into Regions...");
+  console.log("Region1 (category):", regions.region1);
+  console.log("Region2 (time):", regions.region2);
 
-  return sortedData;
+  return regions;
 };
 
-// Reduce Function (Tổng hợp dữ liệu)
-const reduceFunction = (sortedData) => {
-  const reducedData = { category: [], time: { day: [], month: [], year: [] } };
+// Map Phase
+const MapPhase = async (orders) => {
+  const keyValuePairs = orders.flatMap(order => mapFunction(order));
+  const partitionedData = partitionFunction(keyValuePairs);
+  const regions = regionFunction(partitionedData); // Thêm bước Region
+  return regions;
+};
 
-  // Xử lý dữ liệu theo danh mục
-  sortedData.category.forEach(({ key, values }) => {
-    const [_, categoryId] = key.split(":");
-    const result = {
+// Reduce Function for Category (TaskTracker R1)
+const reduceCategory = (region1) => {
+  const result = [];
+
+  // Reduce trực tiếp trên region1 mà không cần bước Sort
+  for (const key in region1) {
+    const [type, categoryId] = key.split(":");
+    if (type !== "category") continue; // Đảm bảo chỉ xử lý các key liên quan đến category
+
+    const values = region1[key];
+    const categoryResult = {
       categoryId,
       categoryName: values[0].categoryName || "Danh mục không xác định",
       totalSoldItems: 0,
@@ -109,34 +116,55 @@ const reduceFunction = (sortedData) => {
     };
 
     values.forEach(({ productId, productName, quantity, revenue }) => {
-      result.totalSoldItems += quantity;
-      result.totalRevenue += revenue;
+      categoryResult.totalSoldItems += quantity;
+      categoryResult.totalRevenue += revenue;
 
-      if (!result.products[productId]) {
-        result.products[productId] = {
+      if (!categoryResult.products[productId]) {
+        categoryResult.products[productId] = {
           productName: productName || "Sản phẩm không xác định",
           quantity: 0,
           revenue: 0,
         };
       }
-      result.products[productId].quantity += quantity;
-      result.products[productId].revenue += revenue;
+      categoryResult.products[productId].quantity += quantity;
+      categoryResult.products[productId].revenue += revenue;
     });
 
-    result.products = Object.values(result.products);
-    reducedData.category.push(result);
+    categoryResult.products = Object.values(categoryResult.products);
+    result.push(categoryResult);
+  }
+
+  return result;
+};
+
+// Reduce Function for Time (TaskTracker R2)
+const reduceTime = (region2) => {
+  // Sort: Tạo và sắp xếp dữ liệu thời gian
+  const timeData = { day: [], month: [], year: [] };
+  for (const key in region2) {
+    const [type, id] = key.split(":");
+    if (type !== "category") {
+      const period = type;
+      timeData[period].push({ key, values: region2[key] });
+    }
+  }
+
+  // Sắp xếp dữ liệu thời gian theo thời gian
+  ["day", "month", "year"].forEach(period => {
+    timeData[period].sort((a, b) => a.key.localeCompare(b.key));
   });
 
-  // Xử lý dữ liệu theo thời gian
+  // Reduce: Tổng hợp dữ liệu theo thời gian
+  const result = { day: [], month: [], year: [] };
   ["day", "month", "year"].forEach(period => {
-    sortedData.time[period].forEach(({ key, values }) => {
+    timeData[period].forEach(({ key, values }) => {
       const [_, time] = key.split(":");
       const totalRevenue = values.reduce((sum, { revenue }) => sum + revenue, 0);
-      reducedData.time[period].push({ time, revenue: totalRevenue });
+      result[period].push({ time, revenue: totalRevenue });
     });
   });
 
-  return reducedData;
+  return result;
 };
 
 // OutputFormat
@@ -171,11 +199,16 @@ const OutputFormat = async ({ category, time }) => {
   }
 };
 
-// Reduce Phase 
-const ReducePhase = async (intermediateData) => {
-  const sortedData = sortFunction(intermediateData);
-  const reducedData = reduceFunction(sortedData);
-  await OutputFormat(reducedData);
+// Reduce Phase
+const ReducePhase = async (regions) => {
+  // TaskTracker R1: Xử lý dữ liệu category từ Region1
+  const reducedCategory = reduceCategory(regions.region1);
+
+  // TaskTracker R2: Xử lý dữ liệu time từ Region2
+  const reducedTime = reduceTime(regions.region2);
+
+  // Ghi kết quả ra MongoDB
+  await OutputFormat({ category: reducedCategory, time: reducedTime });
 };
 
 // Job Tracker
@@ -183,8 +216,8 @@ const RevenueJob = async () => {
   console.log("🔄 JobTracker doanh thu bắt đầu...");
   try {
     const orders = await OrderCollector();
-    const intermediateData = await MapPhase(orders);
-    await ReducePhase(intermediateData);
+    const regions = await MapPhase(orders); // MapPhase trả về regions
+    await ReducePhase(regions); // ReducePhase nhận regions
     console.log("✅ JobTracker doanh thu hoàn tất!");
   } catch (error) {
     console.error("❌ Lỗi trong JobTracker doanh thu:", error);

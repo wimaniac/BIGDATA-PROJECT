@@ -13,14 +13,56 @@ const InputFormat = async () => {
     })
     .lean();
 
-  return orders;
+  const products = await Product.find()
+    .populate("parentCategory", "name")
+    .populate("subCategory", "name")
+    .lean();
+
+  return { orders, products };
 };
 
-// **Map Function: Ánh xạ dữ liệu thành key-value pairs**
-const mapFunction = (orders) => {
+// **Map Phase cho Products (TaskTracker M1)**
+const MapPhaseProducts = async (products) => {
+  // Map: Ánh xạ dữ liệu thành key-value pairs
   const keyValuePairs = [];
+  products.forEach((product) => {
+    const productId = product._id.toString();
+    keyValuePairs.push({
+      key: productId, // Bỏ tiền tố topSelling
+      value: {
+        productId,
+        productName: product.name,
+        price: product.price,
+        description: product.description,
+        parentCategory: product.parentCategory?.name || "Không có danh mục cha",
+        subCategory: product.subCategory?.name || "Không có danh mục con",
+        stock: product.stock,
+        totalSold: product.totalSold,
+      },
+    });
+  });
 
-  // TaskTracker M1: Xử lý Orders để tính sản phẩm bán chạy
+  // Partition: Nhóm dữ liệu theo key
+  const partitionedData = {};
+  keyValuePairs.forEach(({ key, value }) => {
+    if (!partitionedData[key]) {
+      partitionedData[key] = [];
+    }
+    partitionedData[key].push(value);
+  });
+
+  // Region: Chọn sản phẩm đầu tiên cho mỗi key (sản phẩm duy nhất)
+  const regionProducts = {};
+  for (const key in partitionedData) {
+    regionProducts[key] = partitionedData[key][0];
+  }
+  return regionProducts;
+};
+
+// **Map Phase cho Orders (TaskTracker M2)**
+const MapPhaseOrders = async (orders) => {
+  // Map: Ánh xạ dữ liệu thành key-value pairs
+  const keyValuePairs = [];
   orders.forEach((order) => {
     order.products.forEach(({ product, quantity }) => {
       if (!product) {
@@ -30,17 +72,13 @@ const mapFunction = (orders) => {
 
       const productId = product._id.toString();
       keyValuePairs.push({
-        key: `topSelling:${productId}`,
+        key: productId, // Bỏ tiền tố topSelling
         value: { productId, productName: product.name, quantity },
       });
     });
   });
 
-  return keyValuePairs;
-};
-
-// **Partition Function: Nhóm dữ liệu theo key**
-const partitionFunction = (keyValuePairs) => {
+  // Partition: Nhóm dữ liệu theo key
   const partitionedData = {};
   keyValuePairs.forEach(({ key, value }) => {
     if (!partitionedData[key]) {
@@ -48,79 +86,52 @@ const partitionFunction = (keyValuePairs) => {
     }
     partitionedData[key].push(value);
   });
-  return partitionedData;
-};
 
-// **Combine Function: Tổng hợp dữ liệu trong từng nhóm (trong RAM)**
-const combineFunction = (partitionedData) => {
-  const combinedData = {};
-
+  // Combine: Tính tổng số lượng cho mỗi sản phẩm theo key
+  const regionOrders = {};
   for (const key in partitionedData) {
     const values = partitionedData[key];
     const totalQuantity = values.reduce((sum, { quantity }) => sum + quantity, 0);
     const productName = values[0].productName;
     const productId = values[0].productId;
 
-    combinedData[key] = {
+    regionOrders[key] = {
       productId,
       productName,
       totalQuantity,
     };
   }
 
-  return combinedData;
+  return regionOrders;
 };
 
-// **Map Phase: Thực hiện InputFormat, map(), partition(), combine()**
-const MapPhase = async () => {
-  // InputFormat: Lấy dữ liệu từ "DFS"
-  const orders = await InputFormat();
-
-  // TaskTracker M1: Ánh xạ dữ liệu
-  const keyValuePairs = mapFunction(orders);
-
-  // Partition: Nhóm dữ liệu
-  const partitionedData = partitionFunction(keyValuePairs);
-
-  // Combine: Tổng hợp dữ liệu trong RAM
-  const combinedData = combineFunction(partitionedData);
-
-  // Lưu kết quả trung gian vào "DFS" (ở đây chỉ mô phỏng, trả về dữ liệu)
-  return combinedData;
-};
-
-// **Sort Function: Sắp xếp dữ liệu trước khi reduce**
-const sortFunction = (combinedData) => {
+// **Reduce Phase: Tính top 10 sản phẩm bán chạy (TaskTracker R1)**
+const ReducePhaseTopSelling = async ({ regionOrders, regionProducts }) => {
+  // Sort: Sắp xếp dữ liệu theo totalQuantity
   const sortedData = { topSelling: [] };
-
-  for (const key in combinedData) {
-    if (key.startsWith("topSelling:")) {
-      sortedData.topSelling.push(combinedData[key]);
-    }
+  for (const key in regionOrders) {
+    sortedData.topSelling.push(regionOrders[key]); // Bỏ bước lọc key vì không còn tiền tố topSelling
   }
-
-  // Sắp xếp theo totalQuantity (giảm dần)
   sortedData.topSelling.sort((a, b) => b.totalQuantity - a.totalQuantity);
 
-  return sortedData;
-};
+  // Reduce: Lấy top 10 sản phẩm và kết hợp thông tin từ regionProducts
+  const topSelling = sortedData.topSelling.slice(0, 10).map((item) => {
+    const key = item.productId; // Key giờ chỉ là productId
+    const productInfo = regionProducts[key] || {};
+    return {
+      productId: item.productId,
+      productName: item.productName,
+      totalQuantity: item.totalQuantity,
+      price: productInfo.price || 0,
+      description: productInfo.description || "",
+      parentCategory: productInfo.parentCategory || "Không có danh mục cha",
+      subCategory: productInfo.subCategory || "Không có danh mục con",
+      stock: productInfo.stock || 0,
+      totalSold: productInfo.totalSold || 0,
+    };
+  });
 
-// **Reduce Function: Xử lý dữ liệu đã được tổng hợp**
-const reduceFunction = (sortedData) => {
-  // Lấy top 10 sản phẩm bán chạy
-  const topSelling = sortedData.topSelling.slice(0, 10);
   return { topSelling };
-};
-
-// **Reduce Phase: Đọc dữ liệu từ "DFS", sort, reduce**
-const ReducePhase = async (intermediateData) => {
-  // Đọc dữ liệu từ "DFS" (ở đây là intermediateData đã được lưu từ Map Phase)
-  const sortedData = sortFunction(intermediateData);
-
-  // TaskTracker R1: Thực hiện reduce
-  const reducedData = reduceFunction(sortedData);
-
-  return reducedData;
 };
 
 // **OutputFormat: Ghi kết quả cuối cùng vào "DFS" (cập nhật MongoDB)**
@@ -142,6 +153,13 @@ const OutputFormat = async ({ topSelling }) => {
     }
 
     console.log("✅ Đã cập nhật sản phẩm bán chạy!");
+    console.log("Top 10 sản phẩm bán chạy:");
+    topSelling.forEach((product, index) => {
+      console.log(
+        `${index + 1}. ${product.productName} (ID: ${product.productId}) - Tổng số lượng: ${product.totalQuantity}, Giá: ${product.price}, Mô tả: ${product.description}, Danh mục: ${product.parentCategory}/${product.subCategory}, Tồn kho: ${product.stock}, Đã bán: ${product.totalSold}`
+      );
+    });
+
     return topSelling;
   } catch (error) {
     console.error("❌ Lỗi trong OutputFormat:", error);
@@ -153,11 +171,15 @@ const OutputFormat = async ({ topSelling }) => {
 const ProductJob = async () => {
   console.log("🔄 JobTracker sản phẩm bán chạy bắt đầu...");
   try {
+    // InputFormat
+    const { orders, products } = await InputFormat();
+
     // Map Phase
-    const intermediateData = await MapPhase();
+    const regionOrders = await MapPhaseOrders(orders);
+    const regionProducts = await MapPhaseProducts(products);
 
     // Reduce Phase
-    const reducedData = await ReducePhase(intermediateData);
+    const reducedData = await ReducePhaseTopSelling({ regionOrders, regionProducts });
 
     // Output Phase
     const result = await OutputFormat(reducedData);
@@ -167,15 +189,12 @@ const ProductJob = async () => {
   } catch (error) {
     console.error("❌ Lỗi trong JobTracker sản phẩm bán chạy:", error);
     throw error;
-    
   }
-  
 };
 
 // **Lên lịch chạy JobTracker**
 const scheduleProductJob = () => {
   scheduleJob("* * * * *", async () => {
-    // Chạy mỗi ngày lúc 00:00
     await ProductJob();
   });
 };

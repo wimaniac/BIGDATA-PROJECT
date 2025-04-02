@@ -7,7 +7,7 @@ const paymentSchema = new mongoose.Schema({
     transactionId: String,
     status: { 
         type: String, 
-        enum: ["Đã giao", "Đang giao", "Đang xử lí"], 
+        enum: ["Đã thanh toán","Chưa thanh toán", "Đang xử lí", "Đã hủy"], 
         default: "Đang xử lí" 
     },
 }, { timestamps: true });

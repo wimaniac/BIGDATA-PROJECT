@@ -4,20 +4,19 @@ const RevenueReportSchema = new mongoose.Schema({
   type: {
     type: String,
     required: true,
-    enum: ["category", "time"], // Loại báo cáo: theo danh mục hoặc thời gian
+    enum: ["category", "time"], 
   },
   period: {
     type: String,
-    enum: ["day", "month", "year", null], // Chỉ áp dụng cho type = "time"
-    default: null,
+    enum: ["day", "month", "year", null], 
   },
   data: {
-    type: mongoose.Mixed, // Lưu dữ liệu linh hoạt (array hoặc object)
+    type: mongoose.Mixed, 
     required: true,
   },
   createdAt: {
     type: Date,
-    default: Date.now, // Thời gian tạo báo cáo
+    default: Date.now, 
   },
 });
 

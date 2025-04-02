@@ -57,16 +57,30 @@ const Cart = () => {
         setLoading(false);
         return;
       }
-
+    
       try {
-        const response = await axios.get(`http://localhost:5000/api/cart/${userId}`);
+        const token = localStorage.getItem("token"); // Retrieve the token
+        if (!token) {
+          throw new Error("No token found, please log in.");
+        }
+    
+        const response = await axios.get(`http://localhost:5000/api/cart/${userId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`, // Include token for cart API
+          },
+        });
         const cartData = response.data;
-
+    
         const updatedItems = await Promise.all(
           cartData.items.map(async (item) => {
             try {
               const discountResponse = await axios.get(
-                `http://localhost:5000/api/discounts/apply/${item.productId._id}`
+                `http://localhost:5000/api/discounts/apply/${item.productId._id}`,
+                {
+                  headers: {
+                    Authorization: `Bearer ${token}`, // Include token for discount API
+                  },
+                }
               );
               return {
                 ...item,
@@ -91,7 +105,7 @@ const Cart = () => {
             }
           })
         );
-
+    
         setCart({ ...cartData, items: updatedItems });
         setSelectedItems(updatedItems.map((item) => item.productId._id));
         setLoading(false);
@@ -106,100 +120,84 @@ const Cart = () => {
 
   const handleQuantityChange = async (productId, newQuantity) => {
     const clampedQuantity = Math.max(1, newQuantity);
-
     const productInCart = cart?.items.find((item) => item.productId._id === productId);
     if (!productInCart) return;
-
+  
     const availableStock = productInCart.productId.stock;
     if (clampedQuantity > availableStock) {
       alert(`Số lượng yêu cầu (${clampedQuantity}) vượt quá tồn kho (${availableStock})!`);
       return;
     }
-
-    setCart((prevCart) => {
-      if (!prevCart || !prevCart.items) return prevCart;
-      const updatedItems = prevCart.items.map((item) =>
-        item.productId._id === productId ? { ...item, quantity: clampedQuantity } : item
-      );
-      const totalItems = updatedItems.reduce((sum, item) => sum + item.quantity, 0);
-      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: { cartCount: totalItems } }));
-      return { ...prevCart, items: updatedItems };
-    });
-
+  
     try {
+      const token = localStorage.getItem("token");
       const response = await axios.put(
         "http://localhost:5000/api/cart/update",
-        {
-          userId,
-          productId,
-          quantity: clampedQuantity,
-        }
+        { userId, productId, quantity: clampedQuantity },
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-      const updatedCartFromServer = response.data.cart || null;
-
-      setCart((prevCart) => {
-        if (!prevCart || !updatedCartFromServer) return updatedCartFromServer;
-        const mergedItems = updatedCartFromServer.items.map((serverItem) => {
-          const localItem = prevCart.items.find(
-            (item) => item.productId._id === serverItem.productId._id
-          );
-          return {
-            ...serverItem,
-            productId: {
-              ...serverItem.productId,
-              originalPrice:
-                serverItem.productId.originalPrice ?? localItem?.productId.originalPrice,
-              discountedPrice:
-                serverItem.productId.discountedPrice ?? localItem?.productId.discountedPrice,
-              stock: serverItem.productId.stock ?? localItem?.productId.stock,
-            },
-          };
-        });
-        return { ...updatedCartFromServer, items: mergedItems };
-      });
-
-      const totalItems =
-        updatedCartFromServer?.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
+      const updatedCartFromServer = response.data.cart;
+  
+      // Gọi lại API giảm giá để làm giàu dữ liệu
+      const enrichedItems = await Promise.all(
+        updatedCartFromServer.items.map(async (item) => {
+          try {
+            const discountResponse = await axios.get(
+              `http://localhost:5000/api/discounts/apply/${item.productId._id}`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            return {
+              ...item,
+              productId: {
+                ...item.productId,
+                originalPrice: discountResponse.data.originalPrice ?? item.productId.price,
+                discountedPrice: discountResponse.data.discountedPrice ?? item.productId.price,
+                stock: item.productId.stock,
+              },
+            };
+          } catch (error) {
+            console.error(`Lỗi lấy giảm giá cho sản phẩm ${item.productId._id}:`, error);
+            return {
+              ...item,
+              productId: {
+                ...item.productId,
+                originalPrice: item.productId.price,
+                discountedPrice: item.productId.price,
+                stock: item.productId.stock,
+              },
+            };
+          }
+        })
+      );
+  
+      setCart({ ...updatedCartFromServer, items: enrichedItems });
+      const totalItems = enrichedItems.reduce((sum, item) => sum + item.quantity, 0);
       window.dispatchEvent(new CustomEvent("cartUpdated", { detail: { cartCount: totalItems } }));
     } catch (error) {
       console.error("Lỗi cập nhật số lượng:", error);
-      setCart((prevCart) => {
-        if (!prevCart || !prevCart.items) return prevCart;
-        const revertedItems = prevCart.items.map((item) =>
-          item.productId._id === productId ? { ...item, quantity: item.quantity } : item
-        );
-        const totalItems = revertedItems.reduce((sum, item) => sum + item.quantity, 0);
-        window.dispatchEvent(new CustomEvent("cartUpdated", { detail: { cartCount: totalItems } }));
-        return { ...prevCart, items: revertedItems };
-      });
       alert(error.response?.data?.error || "Có lỗi xảy ra khi cập nhật số lượng!");
     }
   };
 
   const handleRemoveItem = async (productId) => {
-    setCart((prevCart) => {
-      if (!prevCart || !prevCart.items) return prevCart;
-      const updatedItems = prevCart.items.filter((item) => item.productId._id !== productId);
-      const totalItems = updatedItems.reduce((sum, item) => sum + item.quantity, 0);
-      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: { cartCount: totalItems } }));
-      return { ...prevCart, items: updatedItems };
-    });
-    setSelectedItems((prev) => prev.filter((id) => id !== productId));
-  
     try {
+      const token = localStorage.getItem("token");
       await axios.delete("http://localhost:5000/api/cart/remove", {
         data: { userId, productId },
+        headers: { Authorization: `Bearer ${token}` },
       });
   
-      // Gọi lại API GET để lấy giỏ hàng đầy đủ
-      const response = await axios.get(`http://localhost:5000/api/cart/${userId}`);
+      const response = await axios.get(`http://localhost:5000/api/cart/${userId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const cartData = response.data;
   
       const updatedItems = await Promise.all(
         cartData.items.map(async (item) => {
           try {
             const discountResponse = await axios.get(
-              `http://localhost:5000/api/discounts/apply/${item.productId._id}`
+              `http://localhost:5000/api/discounts/apply/${item.productId._id}`,
+              { headers: { Authorization: `Bearer ${token}` } }
             );
             return {
               ...item,
@@ -226,6 +224,7 @@ const Cart = () => {
       );
   
       setCart({ ...cartData, items: updatedItems });
+      setSelectedItems(updatedItems.map((item) => item.productId._id));
       const totalItems = updatedItems.reduce((sum, item) => sum + item.quantity, 0);
       window.dispatchEvent(new CustomEvent("cartUpdated", { detail: { cartCount: totalItems } }));
     } catch (error) {
