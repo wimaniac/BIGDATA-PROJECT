@@ -18,6 +18,8 @@ import {
   List,
   ListItem,
   ListItemText,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import axios from "axios";
@@ -68,6 +70,7 @@ const ProductDetail = () => {
     message: "",
     severity: "success",
   });
+  const [tabValue, setTabValue] = useState(0); // State để quản lý tab (0: Đánh giá, 1: Chi tiết)
 
   useEffect(() => {
     const fetchProductAndReviews = async () => {
@@ -167,6 +170,10 @@ const ProductDetail = () => {
 
   const handleSnackbarClose = () => {
     setSnackbar({ ...snackbar, open: false });
+  };
+
+  const handleTabChange = (event, newValue) => {
+    setTabValue(newValue);
   };
 
   if (loading) {
@@ -298,13 +305,9 @@ const ProductDetail = () => {
             {product.description || "Chưa có mô tả sản phẩm."}
           </Typography>
 
+          {/* Thay số lượng tồn kho bằng số lượng đã bán */}
           <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-            <strong>Chi tiết:</strong> {product.details || "Không có chi tiết."}
-          </Typography>
-
-          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-            <strong>Số lượng:</strong>{" "}
-            {product.stock > 0 ? `${product.stock}` : "Hết hàng"}
+            <strong>Đã bán:</strong> {product.totalSold || 0} sản phẩm
           </Typography>
 
           <Box display="flex" alignItems="center" sx={{ mb: 3 }}>
@@ -334,49 +337,70 @@ const ProductDetail = () => {
         </Grid>
       </Grid>
 
-      {/* Danh sách đánh giá */}
+      {/* Tabs để chuyển đổi giữa Đánh giá và Chi tiết sản phẩm */}
       <Box sx={{ mt: 6 }}>
-        <Typography variant="h5" sx={{ fontWeight: "bold", mb: 2 }}>
-          Đánh giá sản phẩm
-        </Typography>
-        {reviews.length > 0 ? (
-          <List>
-            {reviews.map((review) => (
-              <ListItem key={review._id} alignItems="flex-start">
-                <ListItemText
-                  primary={
-                    <Box display="flex" alignItems="center">
-                      <Typography variant="subtitle1" sx={{ fontWeight: "bold" }}>
-                        {review.userId.name}
-                      </Typography>
-                      <Rating
-                        value={review.rating}
-                        readOnly
-                        size="small"
-                        sx={{ ml: 2 }}
-                      />
-                    </Box>
-                  }
-                  secondary={
-                    <>
-                      <Typography
-                        variant="body2"
-                        color="textSecondary"
-                        sx={{ mb: 1 }}
-                      >
-                        {new Date(review.createdAt).toLocaleDateString()}
-                      </Typography>
-                      <Typography variant="body1">{review.comment}</Typography>
-                    </>
-                  }
-                />
-              </ListItem>
-            ))}
-          </List>
-        ) : (
-          <Typography variant="body1" color="textSecondary">
-            Chưa có đánh giá nào cho sản phẩm này.
-          </Typography>
+        <Tabs
+          value={tabValue}
+          onChange={handleTabChange}
+          aria-label="product tabs"
+          sx={{ borderBottom: 1, borderColor: "divider" }}
+        >
+          <Tab label="Đánh giá sản phẩm" />
+          <Tab label="Chi tiết sản phẩm" />
+        </Tabs>
+
+        {/* Tab Đánh giá */}
+        {tabValue === 0 && (
+          <Box sx={{ mt: 3 }}>
+            {reviews.length > 0 ? (
+              <List>
+                {reviews.map((review) => (
+                  <ListItem key={review._id} alignItems="flex-start">
+                    <ListItemText
+                      primary={
+                        <Box display="flex" alignItems="center">
+                          <Typography variant="subtitle1" sx={{ fontWeight: "bold" }}>
+                            {review.userId.name}
+                          </Typography>
+                          <Rating
+                            value={review.rating}
+                            readOnly
+                            size="small"
+                            sx={{ ml: 2 }}
+                          />
+                        </Box>
+                      }
+                      secondary={
+                        <>
+                          <Typography
+                            variant="body2"
+                            color="textSecondary"
+                            sx={{ mb: 1 }}
+                          >
+                            {new Date(review.createdAt).toLocaleDateString()}
+                          </Typography>
+                          <Typography variant="body1">{review.comment}</Typography>
+                        </>
+                      }
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            ) : (
+              <Typography variant="body1" color="textSecondary" sx={{ mt: 2 }}>
+                Chưa có đánh giá nào cho sản phẩm này.
+              </Typography>
+            )}
+          </Box>
+        )}
+
+        {/* Tab Chi tiết sản phẩm */}
+        {tabValue === 1 && (
+          <Box sx={{ mt: 3 }}>
+            <Typography variant="body1" sx={{ fontSize: "16px" }}>
+              {product.details || "Không có chi tiết sản phẩm."}
+            </Typography>
+          </Box>
         )}
       </Box>
 

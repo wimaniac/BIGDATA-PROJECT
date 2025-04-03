@@ -129,11 +129,10 @@ const Home = () => {
       const response = await axios.get(
         "http://localhost:5000/api/products/best-selling",
         {
-          params: { limit: 8 },
           headers: { Authorization: `Bearer ${token}` },
         }
       );
-      setBestSellers(response.data);
+      setBestSellers(response.data.slice(0, 12)); // Chỉ lấy 12 sản phẩm đầu tiên
     } catch (error) {
       console.error("Lỗi lấy sản phẩm bán chạy:", error);
       setBestSellers([]);
@@ -149,11 +148,10 @@ const Home = () => {
       const response = await axios.get(
         "http://localhost:5000/api/products/newest",
         {
-          params: { limit: 8 },
           headers: { Authorization: `Bearer ${token}` },
         }
       );
-      setNewProducts(response.data);
+      setNewProducts(response.data.slice(0, 12)); // Chỉ lấy 12 sản phẩm đầu tiên
     } catch (error) {
       console.error("Lỗi lấy sản phẩm mới:", error);
       setNewProducts([]);
@@ -317,7 +315,7 @@ const Home = () => {
                       height: "100%",
                       display: "flex",
                       flexDirection: "column",
-                      justifyContent: "space-between", // Đảm bảo nút luôn ở dưới
+                      justifyContent: "space-between",
                     }}
                   >
                     <Link
@@ -420,7 +418,7 @@ const Home = () => {
                       height: "100%",
                       display: "flex",
                       flexDirection: "column",
-                      justifyContent: "space-between", 
+                      justifyContent: "space-between",
                     }}
                   >
                     <Link
@@ -485,7 +483,7 @@ const Home = () => {
               ))
             ) : (
               <Typography variant="body1" sx={{ my: 2 }}>
-                Không có sản phẩm bán chạy nào để hiển thị.
+                Không có sản phẩm mới nào để hiển thị.
               </Typography>
             )}
           </Grid>

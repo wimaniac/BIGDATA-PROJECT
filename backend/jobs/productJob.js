@@ -110,13 +110,13 @@ const ReducePhaseTopSelling = async ({ regionOrders, regionProducts }) => {
   // Sort: Sắp xếp dữ liệu theo totalQuantity
   const sortedData = { topSelling: [] };
   for (const key in regionOrders) {
-    sortedData.topSelling.push(regionOrders[key]); // Bỏ bước lọc key vì không còn tiền tố topSelling
+    sortedData.topSelling.push(regionOrders[key]);
   }
   sortedData.topSelling.sort((a, b) => b.totalQuantity - a.totalQuantity);
 
   // Reduce: Lấy top 10 sản phẩm và kết hợp thông tin từ regionProducts
   const topSelling = sortedData.topSelling.slice(0, 10).map((item) => {
-    const key = item.productId; // Key giờ chỉ là productId
+    const key = item.productId;
     const productInfo = regionProducts[key] || {};
     return {
       productId: item.productId,
@@ -131,32 +131,49 @@ const ReducePhaseTopSelling = async ({ regionOrders, regionProducts }) => {
     };
   });
 
-  return { topSelling };
+  return { topSelling, regionOrders }; // Trả về cả regionOrders
 };
 
 // **OutputFormat: Ghi kết quả cuối cùng vào "DFS" (cập nhật MongoDB)**
-const OutputFormat = async ({ topSelling }) => {
+const OutputFormat = async ({ topSelling, regionOrders }) => {
   try {
-    // Reset popularityRank cho tất cả sản phẩm
+    // Bước 1: Cập nhật totalSold cho tất cả sản phẩm trong regionOrders
+    const bulkUpdateTotalSold = [];
+    for (const key in regionOrders) {
+      const product = regionOrders[key];
+      bulkUpdateTotalSold.push({
+        updateOne: {
+          filter: { _id: product.productId },
+          update: { $set: { totalSold: product.totalQuantity } },
+        },
+      });
+    }
+
+    if (bulkUpdateTotalSold.length > 0) {
+      await Product.bulkWrite(bulkUpdateTotalSold);
+      console.log("✅ Đã cập nhật totalSold cho tất cả sản phẩm!");
+    }
+
+    // Bước 2: Reset popularityRank cho tất cả sản phẩm
     await Product.updateMany({}, { $set: { popularityRank: 0 } });
 
-    // Cập nhật popularityRank cho top 10 sản phẩm bán chạy
-    const bulkOperations = topSelling.map((product, index) => ({
+    // Bước 3: Cập nhật popularityRank cho top 10 sản phẩm bán chạy
+    const bulkUpdatePopularityRank = topSelling.map((product, index) => ({
       updateOne: {
         filter: { _id: product.productId },
         update: { $set: { popularityRank: index + 1 } },
       },
     }));
 
-    if (bulkOperations.length > 0) {
-      await Product.bulkWrite(bulkOperations);
+    if (bulkUpdatePopularityRank.length > 0) {
+      await Product.bulkWrite(bulkUpdatePopularityRank);
     }
 
     console.log("✅ Đã cập nhật sản phẩm bán chạy!");
     console.log("Top 10 sản phẩm bán chạy:");
     topSelling.forEach((product, index) => {
       console.log(
-        `${index + 1}. ${product.productName} (ID: ${product.productId}) - Tổng số lượng: ${product.totalQuantity}, Giá: ${product.price}, Mô tả: ${product.description}, Danh mục: ${product.parentCategory}/${product.subCategory}, Tồn kho: ${product.stock}, Đã bán: ${product.totalSold}`
+        `${index + 1}. ${product.productName} (ID: ${product.productId}) - Tổng số lượng: ${product.totalQuantity}, Giá: ${product.price}, Danh mục: ${product.parentCategory}/${product.subCategory}, Tồn kho: ${product.stock},Đã bán: ${product.totalSold}`
       );
     });
 
